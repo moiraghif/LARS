@@ -1,7 +1,21 @@
+#Fixed-X Setting Simulation 
 rm(list = ls())
 
+library(tidyverse)
 
-lars <- function(formula, tol = 1e-10) {
+
+ridge <- function(x, y, lambda) {
+    n <- nrow(x)
+    p <- ncol(x)
+    beta <- solve(crossprod(x) + lambda * diag(p)) %*% crossprod(x, y)
+    #beta <- solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y
+    y_hat <- x %*% beta
+    list(coef = beta,
+         prevision = y_hat)
+}
+
+
+lars <- function(X, y, tol = 1e-10) {
 
     "DOCUMENTATION:
     This function project the y vector into the space L between
@@ -19,8 +33,6 @@ lars <- function(formula, tol = 1e-10) {
     least_squares <- function(x, y)
         solve(crossprod(x)) %*% crossprod(x, y)
 
-    y <- eval(formula[[2]], parent.frame())
-    X <- eval(formula[[3]], parent.frame())
     n <- nrow(X)
     p <- ncol(X)
     max_iter <- min(n - 1, p)
@@ -126,9 +138,9 @@ train <- function(x_train, y_train, method, ...) {
     x_standardizer <- standardizer(x_train)
     y_standardizer <- standardizer(y_train)
 
-    beta <- as.matrix(method(y_standardizer(y_train) ~ x_standardizer(x_train), ...)$coef)
+    beta <- as.matrix(method(x_standardizer(x_train), y_standardizer(y_train), ...)$coef)
 
-    predict <- function(x_new) {   
+    predict <- function(x_new) {
         y_standardizer(x_standardizer(x_new) %*% beta, reverse = TRUE)
     }
 }
@@ -154,7 +166,7 @@ get_function <- function(beta, sigma) {
 }
 
 
-simulation_fixed <- function(data_generator, beta, sigma, method, iterations, verbose = TRUE) {
+simulation_fixed <- function(data_generator, beta, sigma, method, iterations, verbose = TRUE, ...) {
     error <- function(y, y_hat) mean((y - y_hat)^2)
     phi <- get_function(beta, sigma)
     x <- data_generator()
@@ -164,26 +176,25 @@ simulation_fixed <- function(data_generator, beta, sigma, method, iterations, ve
 
     err_total <- c()
     y_hat_total <- matrix(0, nrow = n, ncol = iterations)
-    x <- data_generator()
-    mu <- phi(x, noise = FALSE)
+
     start_time <- Sys.time()
     for (i in 1:iterations) {
-        y <- phi(x)
-        model <- train(x, y, method = method)
+        y_train <- phi(x)
+        y_test <- phi(x)
+        model <- train(x, y_train, method = method, ...)
         y_hat <- model(x)
         y_hat_total[, i] <- y_hat
-        err_total <- c(err_total, error(y, y_hat))
+        err_total <- c(err_total, error(y_test, y_hat))
     }
     stop_time <- Sys.time()
     av_error = mean(err_total)
-    variance = mean(apply(y_hat, 2, var))
-    bias = mean((colMeans(y_hat) - mu)^2)
-    ## TODO: il valore teorico e calcolato dell'MSE sono MOLTO diversi
+    variance = mean(apply(y_hat_total, 1, var))
+    bias = mean((rowMeans(y_hat_total) - mu)^2)
     if (verbose) {
         print(paste0("Execution time: ", stop_time - start_time))
-        print(paste0("Sigma ^2: ", sigma^2))
+        print(paste0("Sigma²:   ", sigma^2))
         print(paste0("Variance: ", variance))
-        print(paste0("Bias ^2:  ", bias))
+        print(paste0("Bias²:    ", bias))
         print(paste0("MSE (theoretical): ", bias + variance))
         print(paste0("MSE (simulation):  ", av_error))
         print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
@@ -195,9 +206,61 @@ simulation_fixed <- function(data_generator, beta, sigma, method, iterations, ve
          "MSE_theoretical" = bias + variance,
          "MSE" = av_error,
          "Prediction error" = bias + variance + sigma^2,
-         "execution time" = stop_time - start_time)
+         "execution time" = stop_time - start_time,
+         "err_log" = err_total,
+         "variance_log" = apply(y_hat_total, 1, var),
+         "bias_log" = (rowMeans(y_hat_total) - mu)^2)
 }
 
+simulation_random <- function(data_generator, beta, sigma, method, iterations, verbose = TRUE, ...) {
+    error <- function(y, y_hat) mean((y - y_hat)^2)
+    phi <- get_function(beta, sigma)
+
+    err_total <- c()
+    bias_total <- c()
+    variance_total <- c()
+
+    start_time <- Sys.time()
+    for (i in 1:iterations) {
+        x_train <- data_generator()
+        y_train <- phi(x_train)
+        n <- nrow(x_train)
+        p <- ncol(x_train)
+        mu <- phi(x_train, noise = FALSE)
+        x_test <- data_generator()
+        y_test <- phi(x_test)
+        model <- train(x_train, y_train, method = method, ...)
+        y_hat <- model(x_test)
+        y_hat_total[, i] <- y_hat
+        err_total <- c(err_total, error(y_test, y_hat))
+        bias_total <- c(bias_total, mean((y_hat - mu)^2))
+        variance_total <- c(variance_total, var(y_hat))
+    }
+    stop_time <- Sys.time()
+    av_error = mean(err_total)
+    variance = mean(apply(y_hat_total, 1, var))
+    bias = mean((rowMeans(y_hat_total) - mu)^2)
+    if (verbose) {
+        print(paste0("Execution time: ", stop_time - start_time))
+        print(paste0("Sigma²:   ", sigma^2))
+        print(paste0("Variance: ", variance))
+        print(paste0("Bias²:    ", bias))
+        print(paste0("MSE (theoretical): ", bias + variance))
+        print(paste0("MSE (simulation):  ", mean(err_total)))
+        print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
+        print(paste0("Prediction Error: ", bias + variance + sigma^2))
+    }
+    list("bias^2" = bias,
+         variance = variance,
+         sigma = sigma,
+         "MSE_theoretical" = bias + variance,
+         "MSE" = av_error,
+         "Prediction error" = bias + variance + sigma^2,
+         "execution time" = stop_time - start_time,
+         "err_log" = err_total,
+         "variance_log" = apply(y_hat_total, 1, var),
+         "bias_log" = (rowMeans(y_hat_total) - mu)^2)
+}
 
 
 n <- 30
@@ -211,6 +274,31 @@ beta_true[sample(p_useless), 1] <- 0
 
 x_generator <- function() get_data(n, p, function(n) runif(n, -10, +10))
 
+
+
 ## strting simulation (fixed settings)
 monte_carlo <- 1e3
-lars_simulation <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo)
+
+## lars simulation
+lars_simulation <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
+
+## grid search for ridge
+ridge_simulations.mse <- c()
+for (lambda in seq(0.5, 10, .5)) {
+    sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
+    ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
+}
+ridge_simulations.mse
+
+###########################################################################
+#Fixed
+MSE <- mean(ridge_simulations.mse)
+hatsigma2 = (n*MSEs)/(n-p)
+Cps = MSEs.tr + 2 * tsigma^2 * p / n 
+opt.fixed = 2 * sigma^2 * p / n
+
+#Random
+fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
+opt.random = opt.fixed + fixed_to_random
+err.random = err.train + opt.random
+Cps.random = Cps.fixed + fixed_to_random
