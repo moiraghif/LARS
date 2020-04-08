@@ -1,265 +1,278 @@
-#Fixed-X Setting Simulation 
 rm(list = ls())
 
 library(tidyverse)
+library(gganimate)
 
 
 ridge <- function(x, y, lambda) {
-    n <- nrow(x)
-    p <- ncol(x)
-    beta <- solve(crossprod(x) + lambda * diag(p)) %*% crossprod(x, y)
-    #beta <- solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y
-    y_hat <- x %*% beta
-    list(coef = beta,
-         prevision = y_hat)
+  n <- nrow(x)
+  p <- ncol(x)
+  beta <- solve(crossprod(x) + lambda * diag(p)) %*% crossprod(x, y)
+  #beta <- solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y
+  y_hat <- x %*% beta
+  list(coef = beta,
+       prevision = y_hat)
 }
 
 
 lars <- function(X, y, tol = 1e-10) {
-
-    "DOCUMENTATION:
-    This function project the y vector into the space L between
-    the active variables (active); then it calculate the direction
-    of the update (u) and its length (gamma).
-    After max_iter iterations, the algorithm reaches convergence
-    and than beta can be computed (using OLS method) between the
-    active matrix Xa and the projection mu.
-    Direction of the update is equiangular between each active
-    variable at each step (and here come the name LAR).
-
-    See _Least Angle Regression_ (Efron, Hastie, Johnstone,
-    Tibshirami), January 2003, for details."
-
-    least_squares <- function(x, y)
-        solve(crossprod(x)) %*% crossprod(x, y)
-
-    n <- nrow(X)
-    p <- ncol(X)
-    max_iter <- min(n - 1, p)
-
-    beta_tot <- matrix(0, ncol = max_iter, nrow = p)
-    rownames(beta_tot) <- colnames(X)
-
-                                        # page 6
-    ## mu is the projection of y on L
-    mu <- matrix(rep(0, n))             # n × 1
-
-    for (i in 1:max_iter) {
-                                        # equation 2.1
-        ## each c_j represent the correlation of the j-th variable
-        ## between X and the projection on the sub-space L
-        c_hat <- crossprod(X, y - mu)   # vector, p × 1
-
-                                        # equation 2.9
-        ## the "active" subset includes each variable that is as much
-        ## correlate with y as the maximum-correlated x_j
-        C <- as.double(max(abs(c_hat)))  # scalar
-        active <- abs((abs(c_hat) - C)) <= tol  # due to R approximation
-        alpha <- sum(active)            # scalar, value of a
-
-                                        # equation 2.10
-        ## a vector of signs of correlation, for multiply the X matrix
-        ## to use only positive correlations
-        s <- as.vector(sign(c_hat))     # vector, p × 1
-
-                                        # equation 2.4
-        ## the X matrix that includes only active variables (with
-        ## positive correlation)
-        Xa <- (X %*% diag(s))[, active]  # matrix, n × a
-
-                                        # equation 2.5
-                                        # (inverse is computed for performance)
-        ## this part is quite complicated, see Paper for details
-        Ga <- solve(crossprod(Xa))      # matrix, a × a
-        ones <- matrix(rep(1, alpha))   # vector, a × 1
-        A <- as.double(crossprod(ones, Ga) %*% ones) ^-0.5
-                                        # scalar
-
-                                        # equation 2.6
-        ## u is the direction of the update
-        w <- A * Ga %*% ones            # vector a × 1
-        u <- Xa %*% w                   # vector n × 1
-
-                                        # equation 2.11
-        ## this part is not well described in the Paper
-        a <- crossprod(X, u)            # vector p × 1
-
-                                        # equation 2.13
-        ## gamma is the intensity of the update: "We take the largest
-        ## step possible in the direction of this predictor" (page 5)
-        gamma <- Inf                    # scalar
-        ## 2p passages: the for loop is not critical
-        ## TODO? implement in R-Cpp
-        for (j in 1:p) {  # functional "min+"
-            cj <- c_hat[j, 1]
-            aj <- a[j, 1]
-            Ac <- c((C - cj) / (A - aj),
-                    (C + cj) / (A + aj))
-            for (new_gamma in Ac) {
-                if (!is.nan(new_gamma) & gamma > new_gamma & new_gamma > 0)
-                    gamma <- new_gamma
-                }
-        }
-
-                                        # equation 2.12
-        ## mu is now updated; the updated value is than used to
-        ## compute the OLS solution and compute new beta vector
-        mu <- mu + gamma * u
-        beta_tot[active, i] <- least_squares(Xa, mu)
+  
+  "DOCUMENTATION:
+  This function project the y vector into the space L between
+  the active variables (active); then it calculate the direction
+  of the update (u) and its length (gamma).
+  After max_iter iterations, the algorithm reaches convergence
+  and than beta can be computed (using OLS method) between the
+  active matrix Xa and the projection mu.
+  Direction of the update is equiangular between each active
+  variable at each step (and here come the name LAR).
+  
+  See _Least Angle Regression_ (Efron, Hastie, Johnstone,
+  Tibshirami), January 2003, for details."
+  
+  least_squares <- function(x, y)
+    solve(crossprod(x)) %*% crossprod(x, y)
+  
+  n <- nrow(X)
+  p <- ncol(X)
+  max_iter <- min(n - 1, p)
+  
+  beta_tot <- matrix(0, ncol = max_iter, nrow = p)
+  rownames(beta_tot) <- colnames(X)
+  
+  # page 6
+  ## mu is the projection of y on L
+  mu <- matrix(rep(0, n))             # n × 1
+  
+  for (i in 1:max_iter) {
+    # equation 2.1
+    ## each c_j represent the correlation of the j-th variable
+    ## between X and the projection on the sub-space L
+    c_hat <- crossprod(X, y - mu)   # vector, p × 1
+    
+    # equation 2.9
+    ## the "active" subset includes each variable that is as much
+    ## correlate with y as the maximum-correlated x_j
+    C <- as.double(max(abs(c_hat)))  # scalar
+    active <- abs((abs(c_hat) - C)) <= tol  # due to R approximation
+    alpha <- sum(active)            # scalar, value of a
+    
+    # equation 2.10
+    ## a vector of signs of correlation, for multiply the X matrix
+    ## to use only positive correlations
+    s <- as.vector(sign(c_hat))     # vector, p × 1
+    
+    # equation 2.4
+    ## the X matrix that includes only active variables (with
+    ## positive correlation)
+    Xa <- (X %*% diag(s))[, active]  # matrix, n × a
+    
+    # equation 2.5
+    # (inverse is computed for performance)
+    ## this part is quite complicated, see Paper for details
+    Ga <- solve(crossprod(Xa))      # matrix, a × a
+    ones <- matrix(rep(1, alpha))   # vector, a × 1
+    A <- as.double(crossprod(ones, Ga) %*% ones) ^-0.5
+    # scalar
+    
+    # equation 2.6
+    ## u is the direction of the update
+    w <- A * Ga %*% ones            # vector a × 1
+    u <- Xa %*% w                   # vector n × 1
+    
+    # equation 2.11
+    ## this part is not well described in the Paper
+    a <- crossprod(X, u)            # vector p × 1
+    
+    # equation 2.13
+    ## gamma is the intensity of the update: "We take the largest
+    ## step possible in the direction of this predictor" (page 5)
+    gamma <- Inf                    # scalar
+    ## 2p passages: the for loop is not critical
+    ## TODO? implement in R-Cpp
+    for (j in 1:p) {  # functional "min+"
+      cj <- c_hat[j, 1]
+      aj <- a[j, 1]
+      Ac <- c((C - cj) / (A - aj),
+              (C + cj) / (A + aj))
+      for (new_gamma in Ac) {
+        if (!is.nan(new_gamma) & gamma > new_gamma & new_gamma > 0)
+          gamma <- new_gamma
+      }
     }
-
-    ## at the end of the iterative process, beta is returned as
-    ## parameters of the model; the projection is used as prevision of
-    ## the training data
-    list(coef = beta_tot[, max_iter, drop = FALSE],
-         prevision = mu,
-         log = beta_tot)
+    
+    # equation 2.12
+    ## mu is now updated; the updated value is than used to
+    ## compute the OLS solution and compute new beta vector
+    mu <- mu + gamma * u
+    beta_tot[active, i] <- least_squares(Xa, mu)
+  }
+  
+  ## at the end of the iterative process, beta is returned as
+  ## parameters of the model; the projection is used as prevision of
+  ## the training data
+  list(coef = beta_tot[, max_iter, drop = FALSE],
+       prevision = mu,
+       log = beta_tot)
 }
 
 
 train <- function(x_train, y_train, method, ...) {
-    n <- nrow(x_train)
-    p <- ncol(x_train)
-    
-    standardizer <- function(x) {
-        mu <- colMeans(x)
-        sigma <- as.double(sqrt(diag(var(x))))
-        function(y, reverse = FALSE) {
-            if (reverse) {
-                I <- diag(length(sigma)) * sigma
-                t(t(y %*% I) + mu)
-            } else {
-                I <- diag(length(sigma)) / sigma
-                t(t(y) - mu) %*% I
-            }
-        }
+  n <- nrow(x_train)
+  p <- ncol(x_train)
+  
+  standardizer <- function(x) {
+    mu <- colMeans(x)
+    sigma <- as.double(sqrt(diag(var(x))))
+    function(y, reverse = FALSE) {
+      if (reverse) {
+        I <- diag(length(sigma)) * sigma
+        t(t(y %*% I) + mu)
+      } else {
+        I <- diag(length(sigma)) / sigma
+        t(t(y) - mu) %*% I
+      }
     }
-
-    x_standardizer <- standardizer(x_train)
-    y_standardizer <- standardizer(y_train)
-
-    beta <- as.matrix(method(x_standardizer(x_train), y_standardizer(y_train), ...)$coef)
-
-    predict <- function(x_new) {
-        y_standardizer(x_standardizer(x_new) %*% beta, reverse = TRUE)
-    }
+  }
+  
+  x_standardizer <- standardizer(x_train)
+  y_standardizer <- standardizer(y_train)
+  
+  beta <- as.matrix(method(x_standardizer(x_train), y_standardizer(y_train), ...)$coef)
+  
+  predict <- function(x_new) {
+    y_standardizer(x_standardizer(x_new) %*% beta, reverse = TRUE)
+  }
 }
 
 
 
 get_data <- function(n, p, random_fn) {
-    "Generate some random data: p features mutually independent taken randomly"
-    out <- matrix(nrow = n, ncol = p)
-    for (i in 1:p) {
-        out[, i] <- random_fn(n)
-    }
-    out
+  "Generate some random data: p features mutually independent taken randomly"
+  out <- matrix(nrow = n, ncol = p)
+  for (i in 1:p) {
+    out[, i] <- random_fn(n)
+  }
+  out
 }
 
 get_function <- function(beta, sigma) {
-    "Generate values according to a ground truth function"
-    function(x, noise = TRUE) {
-        n <- nrow(x)
-        epsilon <- rnorm(n, 0, ifelse(noise, sigma, 0))
-        x %*% beta + epsilon
-    }
+  "Generate values according to a ground truth function"
+  function(x, noise = TRUE) {
+    n <- nrow(x)
+    epsilon <- rnorm(n, 0, ifelse(noise, sigma, 0))
+    x %*% beta + epsilon
+  }
 }
 
 
 simulation_fixed <- function(data_generator, beta, sigma, method, iterations, verbose = TRUE, ...) {
-    error <- function(y, y_hat) mean((y - y_hat)^2)
-    phi <- get_function(beta, sigma)
-    x <- data_generator()
-    mu <- phi(x, noise = FALSE)
-    n <- nrow(x)
-    p <- ncol(x)
-
-    err_total <- c()
-    y_hat_total <- matrix(0, nrow = n, ncol = iterations)
-
-    start_time <- Sys.time()
-    for (i in 1:iterations) {
-        y_train <- phi(x)
-        y_test <- phi(x)
-        model <- train(x, y_train, method = method, ...)
-        y_hat <- model(x)
-        y_hat_total[, i] <- y_hat
-        err_total <- c(err_total, error(y_test, y_hat))
-    }
-    stop_time <- Sys.time()
-    av_error = mean(err_total)
-    variance = mean(apply(y_hat_total, 1, var))
-    bias = mean((rowMeans(y_hat_total) - mu)^2)
-    if (verbose) {
-        print(paste0("Execution time: ", stop_time - start_time))
-        print(paste0("Sigma²:   ", sigma^2))
-        print(paste0("Variance: ", variance))
-        print(paste0("Bias²:    ", bias))
-        print(paste0("MSE (theoretical): ", bias + variance))
-        print(paste0("MSE (simulation):  ", av_error))
-        print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
-        print(paste0("Prediction Error: ", bias + variance + sigma^2))
-    }
-    list("bias^2" = bias,
-         variance = variance,
-         sigma = sigma,
-         "MSE_theoretical" = bias + variance,
-         "MSE" = av_error,
-         "Prediction error" = bias + variance + sigma^2,
-         "execution time" = stop_time - start_time,
-         "err_log" = err_total,
-         "variance_log" = apply(y_hat_total, 1, var),
-         "bias_log" = (rowMeans(y_hat_total) - mu)^2)
+  error <- function(y, y_hat) mean((y - y_hat)^2)
+  phi <- get_function(beta, sigma)
+  x <- data_generator()
+  mu <- phi(x, noise = FALSE)
+  n <- nrow(x)
+  p <- ncol(x)
+  
+  err_total <- c()
+  bias_total <- c()
+  variance_total <- c()
+  sum_total <- c()
+  y_hat_total <- matrix(0, nrow = n, ncol = iterations)
+  
+  start_time <- Sys.time()
+  for (i in 1:iterations) {
+    y_train <- phi(x)
+    y_test <- phi(x)
+    model <- train(x, y_train, method = method, ...)
+    y_hat <- model(x)
+    y_hat_total[, i] <- y_hat
+    err_total <- c(err_total, error(y_test, y_hat))
+    bias_total <- c(bias_total, mean((rowMeans(y_hat_total) - mu)^2)) 
+    variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var)))
+    sum_total <- c(sum_total,bias_total[i]+variance_total[i])
+  }
+  stop_time <- Sys.time()
+  av_error = mean(err_total)
+  variance = variance_total[iterations]
+  bias = bias_total[iterations]
+  if (verbose) {
+    print(paste0("Execution time: ", stop_time - start_time))
+    print(paste0("Sigma²:   ", sigma^2))
+    print(paste0("Variance: ", variance))
+    print(paste0("Bias²:    ", bias))
+    print(paste0("MSE (theoretical): ", bias + variance))
+    print(paste0("MSE (simulation):  ", av_error))
+    print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
+    print(paste0("Prediction Error: ", bias + variance + sigma^2))
+  }
+  list("bias^2" = bias,
+       variance = variance,
+       sigma = sigma,
+       "MSE_theoretical" = bias + variance,
+       "MSE" = av_error,
+       "Prediction error" = bias + variance + sigma^2,
+       "execution time" = stop_time - start_time,
+       "err_log" = err_total,
+       "variance_log" = variance_total,
+       "bias_log" = bias_total,
+       "log" = sum_total
+  )
 }
 
 simulation_random <- function(data_generator, beta, sigma, method, iterations, verbose = TRUE, ...) {
-    error <- function(y, y_hat) mean((y - y_hat)^2)
-    phi <- get_function(beta, sigma)
-
-    err_total <- c()
-    bias_total <- c()
-    variance_total <- c()
-
-    start_time <- Sys.time()
-    for (i in 1:iterations) {
-        x_train <- data_generator()
-        y_train <- phi(x_train)
-        n <- nrow(x_train)
-        p <- ncol(x_train)
-        mu <- phi(x_train, noise = FALSE)
-        x_test <- data_generator()
-        y_test <- phi(x_test)
-        model <- train(x_train, y_train, method = method, ...)
-        y_hat <- model(x_test)
-        y_hat_total[, i] <- y_hat
-        err_total <- c(err_total, error(y_test, y_hat))
-        bias_total <- c(bias_total, mean((y_hat - mu)^2))
-        variance_total <- c(variance_total, var(y_hat))
-    }
-    stop_time <- Sys.time()
-    av_error = mean(err_total)
-    variance = mean(apply(y_hat_total, 1, var))
-    bias = mean((rowMeans(y_hat_total) - mu)^2)
-    if (verbose) {
-        print(paste0("Execution time: ", stop_time - start_time))
-        print(paste0("Sigma²:   ", sigma^2))
-        print(paste0("Variance: ", variance))
-        print(paste0("Bias²:    ", bias))
-        print(paste0("MSE (theoretical): ", bias + variance))
-        print(paste0("MSE (simulation):  ", mean(err_total)))
-        print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
-        print(paste0("Prediction Error: ", bias + variance + sigma^2))
-    }
-    list("bias^2" = bias,
-         variance = variance,
-         sigma = sigma,
-         "MSE_theoretical" = bias + variance,
-         "MSE" = av_error,
-         "Prediction error" = bias + variance + sigma^2,
-         "execution time" = stop_time - start_time,
-         "err_log" = err_total,
-         "variance_log" = apply(y_hat_total, 1, var),
-         "bias_log" = (rowMeans(y_hat_total) - mu)^2)
+  error <- function(y, y_hat) mean((y - y_hat)^2)
+  phi <- get_function(beta, sigma)
+  
+  err_total <- c()
+  bias_total <- c()
+  variance_total <- c()
+  sum_total <- c()
+  y_hat_total <- matrix(0, nrow = n, ncol = iterations)
+  
+  start_time <- Sys.time()
+  for (i in 1:iterations) {
+    x_train <- data_generator()
+    y_train <- phi(x_train)
+    n <- nrow(x_train)
+    p <- ncol(x_train)
+    mu <- phi(x_train, noise = FALSE)
+    x_test <- data_generator()
+    y_test <- phi(x_test)
+    model <- train(x_train, y_train, method = method, ...)
+    y_hat <- model(x_test)
+    y_hat_total[, i] <- y_hat
+    err_total <- c(err_total, error(y_test, y_hat))
+    bias_total <- c(bias_total, (rowMeans(y_hat_total) - mu)^2) #
+    variance_total <- c(variance_total, var(y_hat_total)) #
+    sum_total <- c(sum_total,bias_total[i]+variance_total[i])
+  }
+  stop_time <- Sys.time()
+  av_error = mean(err_total)
+  variance = variance_total[iterations]
+  bias = bias_total[iterations]
+  if (verbose) {
+    print(paste0("Execution time: ", stop_time - start_time))
+    print(paste0("Sigma²:   ", sigma^2))
+    print(paste0("Variance: ", variance))
+    print(paste0("Bias²:    ", bias))
+    print(paste0("MSE (theoretical): ", bias + variance))
+    print(paste0("MSE (simulation):  ", mean(err_total)))
+    print(paste0("       difference: ", round(abs(bias + variance - av_error), 4)))
+    print(paste0("Prediction Error: ", bias + variance + sigma^2))
+  }
+  list("bias^2" = bias,
+       variance = variance,
+       sigma = sigma,
+       "MSE_theoretical" = bias + variance,
+       "MSE" = av_error,
+       "Prediction error" = bias + variance + sigma^2,
+       "execution time" = stop_time - start_time,
+       "err_log" = err_total,
+       "variance_log" = variance_total,
+       "bias_log" = bias_total,
+       "log" = sum_total
+  )
 }
 
 
@@ -282,23 +295,132 @@ monte_carlo <- 1e3
 ## lars simulation
 lars_simulation <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
 
-## grid search for ridge
+###########################################################################
+##Ridge Fixed-simulation 
+monte_carlo <- 1e2
 ridge_simulations.mse <- c()
+ridge_simulations.lambda <- c()
+ridge_simulations.beta <- c()
 for (lambda in seq(0.5, 10, .5)) {
-    sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
-    ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
+  sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
+  ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
+  ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
+  #ridge_simulations.beta <- c()
 }
-ridge_simulations.mse
+ridge_matrix <- data.frame(cbind(ridge_simulations.lambda,ridge_simulations.mse))
+names(ridge_matrix) <- c("Lambda","MSE")
+ridge_matrix
 
 ###########################################################################
+##Measures
+
 #Fixed
-MSE <- mean(ridge_simulations.mse)
-hatsigma2 = (n*MSEs)/(n-p)
-Cps = MSEs.tr + 2 * tsigma^2 * p / n 
+hatsigma2 = (n*MSEs.tr)/(n-p)
+Cps = MSEs.tr + (2*hatsigma2*p)/n 
 opt.fixed = 2 * sigma^2 * p / n
 
 #Random
 fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
-opt.random = opt.fixed + fixed_to_random
+opt.random = opt.fixed*(2+(p+1)/())
 err.random = err.train + opt.random
 Cps.random = Cps.fixed + fixed_to_random
+###########################################################################
+##Plot
+
+#Create db
+db <- data.frame(cbind(1:length(lars_simulation$err_log),lars_simulation$err_log,lars_simulation$log,lars_simulation$variance_log,lars_simulation$bias_log))
+names(db) <- c("Iter","Errors","Bias² + Variance","Variance","Bias²")
+
+#Arrow plot for Variance
+arrow <- c()
+for(k in 2:monte_carlo) {
+  if(db$Variance[k]<db$Variance[k-1]) {
+    arrow <- c(arrow,"\u2193")
+  }
+  else if (db$Variance[k]==db$Variance[k-1]) {
+    arrow <- c(arrow,"\u2192")
+  }
+  else {
+    arrow <- c(arrow,"\u2191")
+  }
+}
+
+#Arrow plot for Bias
+arrow_bias <- c()
+for(k in 2:monte_carlo) {
+  if(db$"Bias²"[k]<db$"Bias²"[k-1]) {
+    arrow_bias <- c(arrow_bias,"\u2193")
+  }
+  else if (db$"Bias²"[k]==db$"Bias²"[k-1]) {
+    arrow_bias <- c(arrow_bias,"\u2192")
+  }
+  else {
+    arrow_bias <- c(arrow_bias,"\u2191")
+  }
+}
+
+##Convergence animated Plot
+z <- seq(1,nrow(db))
+cols <- c("Theoretical MSE"="#00AFBB","Calculated MSE"="#FC4E07","E(MSE)"="#C4961A")
+conv <- ggplot() +
+  geom_hline(yintercept = mean(db$Errors),linetype="dashed")+
+  #Theoretical Error
+  geom_point(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Theoretical MSE"), size=6) +
+  geom_line(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Theoretical MSE"), size=0.1) +
+  #Calculated Error
+  geom_point(data = db, aes(x = db$Iter, y = db$Errors, colour="Calculated MSE"), size=6) +
+  geom_line(data = db, aes(x = db$Iter, y = db$Errors, colour="Calculated MSE"), size=0.1) +
+  labs(title = "Convergence to the Expected MSE",
+       caption = "The plot shows a small oscillation, therefore low variability, of the Mean Squared Error \n estimates around its Montecarlo estimate: E (MSE). The analytical estimate of the average \n MSE  -  the sum between squared bias and variance - has a linear convergence. \n In the upper right corner, the arrows indicate the trend of the averages \n of the two components as the iterations increase.")+
+  ylim(0,5000)+
+  xlab("Iteration")+
+  ylab("Value") +
+  #Final points (Averages)
+  geom_point(aes(x=monte_carlo,y=mean(db$Errors),colour="E(MSE)"), size=6)+
+  geom_text(data=data.frame(z=z),
+            mapping = aes(x = 800, y = 4700,
+                          label = paste0("ITERATION N.  ",z,"\n","E(Bias²):       ",as.integer(db$"Bias²")," ",arrow_bias,"\n",
+                                         "E(Variance):    ",as.integer(db$Variance)," ",arrow)))+
+  theme(plot.title = element_text(size = 20, face = "bold"),
+        legend.title=element_text(size=15, face = "bold"), 
+        legend.text=element_text(size=15),
+        plot.caption = element_text(face = "italic", hjust = 0.5, size = 15))+
+  theme_bw()+
+  labs(colour="Value")+
+  transition_reveal(z)+
+  ease_aes("linear")+
+  enter_appear()
+plot1 <- animate(conv, fps=10, end_pause = 10)
+#Save
+anim_save("/Users/riccardocervero/Desktop/Plot1.gif",plot1)
+
+##E(Bias) and E(Variance)
+z <- seq(1,nrow(db))
+cols <- c("E(Bias²)"="#00AFBB","E(Variance)"="#C4961A")
+BiasVariance <- ggplot() +
+  #Bias
+  geom_line(data = db, aes(x = db$Iter, y = db$`Bias²`, colour="E(Bias²)"), size=0.5) +
+  #Variance
+  geom_line(data = db, aes(x = db$Iter, y = db$Variance, colour="E(Variance)"), size=0.5) +
+  labs(title = "Bias² and Variance Trend",
+       caption = "Montecarlo estim. of expected Bias² linearly decreases while expected Variance draw a parabola.")+
+  ylim(0,5000)+
+  xlab("Iteration")+
+  ylab("Value") +
+  geom_text(data=data.frame(z=z),
+            mapping = aes(x = 800, y = 4700,
+                          label = paste0("ITERATION N.  ",z)))+
+  theme(plot.title = element_text(size = 25, face = "bold"),
+        legend.title=element_text(size=20, face = "bold"), 
+        legend.text=element_text(size=20),
+        plot.caption = element_text(face = "italic", size = 15))+
+  theme_bw()+
+  labs(colour="Value")+
+  transition_reveal(z)+
+  ease_aes("linear")+
+  enter_appear()
+plot2 <- animate(BiasVariance, fps=10, end_pause = 10)
+#Save
+anim_save("/Users/riccardocervero/Desktop/Plot2.gif",plot2)
+
+##Lambda-MSE Histogram Static Plot
