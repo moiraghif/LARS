@@ -2,6 +2,7 @@ rm(list = ls())
 
 library(tidyverse)
 library(gganimate)
+library(tibble)
 
 
 ridge <- function(x, y, lambda) {
@@ -188,9 +189,12 @@ simulation_fixed <- function(data_generator, beta, sigma, method, iterations, ve
     y_hat <- model(x)
     y_hat_total[, i] <- y_hat
     err_total <- c(err_total, error(y_test, y_hat))
-    bias_total <- c(bias_total, mean((rowMeans(y_hat_total, na.rm = TRUE) - mu)^2)) 
-    variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var)))
+    bias_total <- c(bias_total, mean((rowMeans(y_hat_total,na.rm = T) - mu)^2)) 
+    variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var,na.rm=TRUE)))
     sum_total <- c(sum_total,bias_total[i]+variance_total[i])
+    #Print completion time
+    Sys.sleep(0.1)
+    cat("\r","Iteration n.",i)
   }
   stop_time <- Sys.time()
   av_error <- mean(err_total)
@@ -243,14 +247,17 @@ simulation_random <- function(data_generator, beta, sigma, method, iterations, v
     y_hat <- model(x_test)
     y_hat_total[, i] <- y_hat
     err_total <- c(err_total, error(y_test, y_hat))
-    bias_total <- c(bias_total, (rowMeans(y_hat_total, na.rm = TRUE) - mu)^2) #
-    variance_total <- c(variance_total, var(y_hat)) #
-    sum_total <- c(sum_total,bias_total[i] + variance_total[i])
+    bias_total <- c(bias_total, mean((y_hat - mu))^2) 
+    variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var, na.rm=TRUE)))
+    sum_total <- c(sum_total,bias_total[i]+variance_total[i])
+    #Print completion time
+    Sys.sleep(0.1)
+    cat("\r","Iteration n.",i)
   }
   stop_time <- Sys.time()
   av_error <- mean(err_total)
   variance <- variance_total[iterations]
-  bias <- bias_total[iterations]
+  bias <- mean(bias_total)
   if (verbose) {
     print(paste0("Execution time: ", stop_time - start_time))
     print(paste0("Sigma²:   ", sigma^2))
@@ -292,50 +299,40 @@ x_generator <- function() get_data(n, p, function(n) runif(n, -10, +10))
 ## strting simulation (fixed settings)
 monte_carlo <- 1e3
 
-## lars simulation
-lars_simulation <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
+## lars fixed simulation
+lars_simulation_fixed <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
 
-###########################################################################
-##Ridge Fixed-simulation
-ridge_simulations.mse <- c()
-ridge_simulations.lambda <- c()
-ridge_simulations.beta <- c()
-ridge_simulations.variance <- c()
-ridge_simulations.bias <- c()
-lambdas <- seq(0.5, 10, .5)
-for (lambda in lambdas) {
-  sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
-  ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
-  ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
-  ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
-  ridge_simulations.variance <- c(ridge_simulations.variance, sim$variance)
-  #ridge_simulations.beta <- c()
-}
-ridge_matrix <- data.frame(cbind(ridge_simulations.lambda,ridge_simulations.mse))
-names(ridge_matrix) <- c("Lambda","MSE")
-ridge_matrix
+## lars random simulation
+lars_simulation_random <- simulation_random(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
 
 ###########################################################################
 ##Measures
 
-## #Fixed
-## hatsigma2 = (n*MSEs.tr)/(n-p)
-## Cps = MSEs.tr + (2*hatsigma2*p)/n 
-## opt.fixed = 2 * sigma^2 * p / n
+#Fixed
+hatsigma2 = (n*MSEs.tr)/(n-p)
+Cps = MSEs.tr + (2*hatsigma2*p)/n 
+opt.fixed = 2 * sigma^2 * p / n
 
-## #Random
-## fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
-## opt.random = opt.fixed*(2+(p+1)/())
-## err.random = err.train + opt.random
-## Cps.random = Cps.fixed + fixed_to_random
-## ###########################################################################
-## ##Plot
+#Random
+fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
+opt.random = opt.fixed*(2+(p+1)/())
+err.random = err.train + opt.random
+Cps.random = Cps.fixed + fixed_to_random
+###########################################################################
+##Plot
 
-#Create db
-db <- data.frame(cbind(1:length(lars_simulation$err_log),lars_simulation$err_log,lars_simulation$log,lars_simulation$variance_log,lars_simulation$bias_log))
-names(db) <- c("Iter","Errors","Bias² + Variance","Variance","Bias²")
+#Function to create db
+create_db <- function(x) {
+  db <- data.frame(cbind(1:length(x$err_log),x$err_log,x$log,x$variance_log,x$bias_log))
+  names(db) <- c("Iter","Errors","Bias² + Variance","Variance","Bias²")
+  return(db)
+}
+
+#db <- create_db(lars_simulation_fixed)
+db <- create_db(lars_simulation_random)
 
 #Arrow plot for Variance
+if(is.na(db$Variance[1])) {db$Variance[1]<-0}
 arrow <- c()
 for(k in 2:monte_carlo) {
   if(db$Variance[k]<db$Variance[k-1]) {
@@ -365,24 +362,24 @@ for(k in 2:monte_carlo) {
 
 ##Convergence animated Plot
 z <- seq(1,nrow(db))
-cols <- c("Theoretical MSE"="#00AFBB","Calculated MSE"="#FC4E07","E(MSE)"="#C4961A")
+cols <- c("Bias² + Variance"="#00AFBB","Estimates Fluctuation"="#FC4E07","Expected Value"="#C4961A")
 conv <- ggplot() +
   geom_hline(yintercept = mean(db$Errors),linetype="dashed")+
   #Theoretical Error
-  geom_point(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Theoretical MSE"), size=6) +
-  geom_line(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Theoretical MSE"), size=0.1) +
+  geom_point(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Bias² + Variance"), size=6) +
+  geom_line(data = db, aes(x = db$Iter, y = db$`Bias² + Variance`, colour="Bias² + Variance"), size=0.1) +
   #Calculated Error
-  geom_point(data = db, aes(x = db$Iter, y = db$Errors, colour="Calculated MSE"), size=6) +
-  geom_line(data = db, aes(x = db$Iter, y = db$Errors, colour="Calculated MSE"), size=0.1) +
-  labs(title = "Convergence to the Expected MSE",
-       caption = "The plot shows a small oscillation, therefore low variability, of the Mean Squared Error \n estimates around its Montecarlo estimate: E (MSE). The analytical estimate of the average \n MSE  -  the sum between squared bias and variance - has a linear convergence. \n In the upper right corner, the arrows indicate the trend of the averages \n of the two components as the iterations increase.")+
+  geom_point(data = db, aes(x = db$Iter, y = db$Errors, colour="Estimates Fluctuation"), size=6) +
+  geom_line(data = db, aes(x = db$Iter, y = db$Errors, colour="Estimates Fluctuation"), size=0.1) +
+  labs(title = "Convergence to the Expected MSE (Fixed-X Setting)")+
   ylim(0,5000)+
+  xlim(0,length(z))+
   xlab("Iteration")+
   ylab("Value") +
   #Final points (Averages)
-  geom_point(aes(x=monte_carlo,y=mean(db$Errors),colour="E(MSE)"), size=6)+
+  geom_point(aes(x=length(z),y=mean(db$Errors),colour="Expected Value"), size=6)+
   geom_text(data=data.frame(z=z),
-            mapping = aes(x = 800, y = 4700,
+            mapping = aes(x = 0.8*length(z), y = 4700,
                           label = paste0("ITERATION N.  ",z,"\n","E(Bias²):       ",as.integer(db$"Bias²")," ",arrow_bias,"\n",
                                          "E(Variance):    ",as.integer(db$Variance)," ",arrow)))+
   theme(plot.title = element_text(size = 20, face = "bold"),
@@ -390,11 +387,12 @@ conv <- ggplot() +
         legend.text=element_text(size=15),
         plot.caption = element_text(face = "italic", hjust = 0.5, size = 15))+
   theme_bw()+
-  labs(colour="Value")+
+  labs(colour="MSE Values")+
   transition_reveal(z)+
   ease_aes("linear")+
   enter_appear()
 plot1 <- animate(conv, fps=10, end_pause = 10)
+plot1
 #Save
 anim_save("/Users/riccardocervero/Desktop/Plot1.gif",plot1)
 
@@ -406,13 +404,13 @@ BiasVariance <- ggplot() +
   geom_line(data = db, aes(x = db$Iter, y = db$`Bias²`, colour="E(Bias²)"), size=0.5) +
   #Variance
   geom_line(data = db, aes(x = db$Iter, y = db$Variance, colour="E(Variance)"), size=0.5) +
-  labs(title = "Bias² and Variance Trend",
-       caption = "Montecarlo estim. of expected Bias² linearly decreases while expected Variance draw a parabola.")+
-  ylim(0,5000)+
+  labs(title = "Bias² and Variance Trend")+
+  ylim(0,1.01*max(db))+
+  xlim(0,length(z))+
   xlab("Iteration")+
   ylab("Value") +
   geom_text(data=data.frame(z=z),
-            mapping = aes(x = 800, y = 4700,
+            mapping = aes(x = 0.8*length(z), y = 1.01*max(db),
                           label = paste0("ITERATION N.  ",z)))+
   theme(plot.title = element_text(size = 25, face = "bold"),
         legend.title=element_text(size=20, face = "bold"), 
@@ -424,51 +422,22 @@ BiasVariance <- ggplot() +
   ease_aes("linear")+
   enter_appear()
 plot2 <- animate(BiasVariance, fps=10, end_pause = 10)
+plot2
 #Save
 anim_save("/Users/riccardocervero/Desktop/Plot2.gif",plot2)
 
-
-
-
-### FIXED PLOT
-
-names <- c(map_chr(lambdas, ~paste0("λ=", .x)), "lars")
-
-bias_variance <- tibble(
-   value = c(ridge_simulations.bias,     lars_simulation$"bias^2",
-             ridge_simulations.variance, lars_simulation$variance),
-   index_name = rep(c("bias", "variance"), each = length(names)),
-   model_name = factor(rep(names, times = 2), levels = names))
-
-
-ggplot(bias_variance, aes(x = model_name, fill = index_name)) +
-    geom_bar(aes(y = value), stat = "identity", position = "stack") +
-    xlab("") + ylab("") + ggtitle("Reducible Error scomposition") +
-    guides(fill = guide_legend(title = "")) +
-    scale_y_sqrt()
-
-ggsave("fixed.png", dpi = 500,
-       width = 16, height = 9)
-
-
-
-
-
-
-### RANDOM TEST
-monte_carlo <- 1e2
-lars_simulation <- simulation_random(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
-
 ###########################################################################
-##Ridge Fixed-simulation 
+##Ridge Fixed-simulation
+monte_carlo <- 1e2
 ridge_simulations.mse <- c()
 ridge_simulations.lambda <- c()
 ridge_simulations.beta <- c()
 ridge_simulations.variance <- c()
 ridge_simulations.bias <- c()
-lambdas <- seq(0.5, 10, .5)
+lambdas <- seq(0.5, 5, .5)
 for (lambda in lambdas) {
-  sim <- simulation_random(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
+  print(paste0("Lambda: ",lambda))
+  sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
   ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
   ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
   ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
@@ -477,18 +446,36 @@ for (lambda in lambdas) {
 }
 
 
+##Ridge Random-simulation
+monte_carlo <- 1e2
+ridge_simulations.mse <- c()
+ridge_simulations.lambda <- c()
+ridge_simulations.beta <- c()
+ridge_simulations.variance <- c()
+ridge_simulations.bias <- c()
+lambdas <- seq(0.5, 5, .5)
+for (lambda in lambdas) {
+  print(paste0("Lambda: ",lambda,"\n"))
+  sim <- simulation_random(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
+  ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
+  ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
+  ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
+  ridge_simulations.variance <- c(ridge_simulations.variance, sim$variance)
+  #ridge_simulations.beta <- c()
+}
 
+#Plot
 bias_variance <- tibble(
-   value = c(ridge_simulations.bias,     lars_simulation$"bias^2",
-             ridge_simulations.variance, lars_simulation$variance),
-   index_name = rep(c("bias", "variance"), each = length(names)),
-   model_name = factor(rep(names, times = 2), levels = names))
+  value = c(ridge_simulations.bias,     lars_simulation$"bias^2",
+            ridge_simulations.variance, lars_simulation$variance),
+  index_name = rep(c("bias", "variance"), each = length(names)),
+  model_name = factor(rep(names, times = 2), levels = names))
 
 
 ggplot(bias_variance, aes(x = model_name, fill = index_name)) +
-    geom_bar(aes(y = value), stat = "identity", position = "stack") +
-    xlab("") + ylab("") + ggtitle("Reducible Error scomposition") +
-    guides(fill = guide_legend(title = "")) +
-    scale_y_log10()
+  geom_bar(aes(y = value), stat = "identity", position = "stack") +
+  xlab("") + ylab("") + ggtitle("Reducible Error scomposition") +
+  guides(fill = guide_legend(title = "")) +
+  scale_y_log10()
 ggsave("random.png", dpi = 500,
        width = 16, height = 9)
