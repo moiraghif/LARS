@@ -178,7 +178,7 @@ simulation_fixed <- function(data_generator, beta, sigma, method, iterations, ve
   bias_total <- c()
   variance_total <- c()
   sum_total <- c()
-  y_hat_total <- matrix(0, nrow = n, ncol = iterations)
+  y_hat_total <- matrix(NA, nrow = n, ncol = iterations)
   
   start_time <- Sys.time()
   for (i in 1:iterations) {
@@ -188,14 +188,14 @@ simulation_fixed <- function(data_generator, beta, sigma, method, iterations, ve
     y_hat <- model(x)
     y_hat_total[, i] <- y_hat
     err_total <- c(err_total, error(y_test, y_hat))
-    bias_total <- c(bias_total, mean((rowMeans(y_hat_total) - mu)^2)) 
+    bias_total <- c(bias_total, mean((rowMeans(y_hat_total, na.rm = TRUE) - mu)^2)) 
     variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var)))
     sum_total <- c(sum_total,bias_total[i]+variance_total[i])
   }
   stop_time <- Sys.time()
-  av_error = mean(err_total)
-  variance = variance_total[iterations]
-  bias = bias_total[iterations]
+  av_error <- mean(err_total)
+  variance <- variance_total[iterations]
+  bias <- bias_total[iterations]
   if (verbose) {
     print(paste0("Execution time: ", stop_time - start_time))
     print(paste0("Sigma²:   ", sigma^2))
@@ -228,7 +228,7 @@ simulation_random <- function(data_generator, beta, sigma, method, iterations, v
   bias_total <- c()
   variance_total <- c()
   sum_total <- c()
-  y_hat_total <- matrix(0, nrow = n, ncol = iterations)
+  y_hat_total <- matrix(NA, nrow = n, ncol = iterations)
   
   start_time <- Sys.time()
   for (i in 1:iterations) {
@@ -243,14 +243,14 @@ simulation_random <- function(data_generator, beta, sigma, method, iterations, v
     y_hat <- model(x_test)
     y_hat_total[, i] <- y_hat
     err_total <- c(err_total, error(y_test, y_hat))
-    bias_total <- c(bias_total, (rowMeans(y_hat_total) - mu)^2) #
-    variance_total <- c(variance_total, var(y_hat_total)) #
-    sum_total <- c(sum_total,bias_total[i]+variance_total[i])
+    bias_total <- c(bias_total, (rowMeans(y_hat_total, na.rm = TRUE) - mu)^2) #
+    variance_total <- c(variance_total, var(y_hat)) #
+    sum_total <- c(sum_total,bias_total[i] + variance_total[i])
   }
   stop_time <- Sys.time()
-  av_error = mean(err_total)
-  variance = variance_total[iterations]
-  bias = bias_total[iterations]
+  av_error <- mean(err_total)
+  variance <- variance_total[iterations]
+  bias <- bias_total[iterations]
   if (verbose) {
     print(paste0("Execution time: ", stop_time - start_time))
     print(paste0("Sigma²:   ", sigma^2))
@@ -296,15 +296,19 @@ monte_carlo <- 1e3
 lars_simulation <- simulation_fixed(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
 
 ###########################################################################
-##Ridge Fixed-simulation 
-monte_carlo <- 1e2
+##Ridge Fixed-simulation
 ridge_simulations.mse <- c()
 ridge_simulations.lambda <- c()
 ridge_simulations.beta <- c()
-for (lambda in seq(0.5, 10, .5)) {
+ridge_simulations.variance <- c()
+ridge_simulations.bias <- c()
+lambdas <- seq(0.5, 10, .5)
+for (lambda in lambdas) {
   sim <- simulation_fixed(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
   ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
   ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
+  ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
+  ridge_simulations.variance <- c(ridge_simulations.variance, sim$variance)
   #ridge_simulations.beta <- c()
 }
 ridge_matrix <- data.frame(cbind(ridge_simulations.lambda,ridge_simulations.mse))
@@ -314,18 +318,18 @@ ridge_matrix
 ###########################################################################
 ##Measures
 
-#Fixed
-hatsigma2 = (n*MSEs.tr)/(n-p)
-Cps = MSEs.tr + (2*hatsigma2*p)/n 
-opt.fixed = 2 * sigma^2 * p / n
+## #Fixed
+## hatsigma2 = (n*MSEs.tr)/(n-p)
+## Cps = MSEs.tr + (2*hatsigma2*p)/n 
+## opt.fixed = 2 * sigma^2 * p / n
 
-#Random
-fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
-opt.random = opt.fixed*(2+(p+1)/())
-err.random = err.train + opt.random
-Cps.random = Cps.fixed + fixed_to_random
-###########################################################################
-##Plot
+## #Random
+## fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
+## opt.random = opt.fixed*(2+(p+1)/())
+## err.random = err.train + opt.random
+## Cps.random = Cps.fixed + fixed_to_random
+## ###########################################################################
+## ##Plot
 
 #Create db
 db <- data.frame(cbind(1:length(lars_simulation$err_log),lars_simulation$err_log,lars_simulation$log,lars_simulation$variance_log,lars_simulation$bias_log))
@@ -423,4 +427,68 @@ plot2 <- animate(BiasVariance, fps=10, end_pause = 10)
 #Save
 anim_save("/Users/riccardocervero/Desktop/Plot2.gif",plot2)
 
-##Lambda-MSE Histogram Static Plot
+
+
+
+### FIXED PLOT
+
+names <- c(map_chr(lambdas, ~paste0("λ=", .x)), "lars")
+
+bias_variance <- tibble(
+   value = c(ridge_simulations.bias,     lars_simulation$"bias^2",
+             ridge_simulations.variance, lars_simulation$variance),
+   index_name = rep(c("bias", "variance"), each = length(names)),
+   model_name = factor(rep(names, times = 2), levels = names))
+
+
+ggplot(bias_variance, aes(x = model_name, fill = index_name)) +
+    geom_bar(aes(y = value), stat = "identity", position = "stack") +
+    xlab("") + ylab("") + ggtitle("Reducible Error scomposition") +
+    guides(fill = guide_legend(title = "")) +
+    scale_y_sqrt()
+
+ggsave("fixed.png", dpi = 500,
+       width = 16, height = 9)
+
+
+
+
+
+
+### RANDOM TEST
+monte_carlo <- 1e2
+lars_simulation <- simulation_random(x_generator, beta_true, sigma, lars, monte_carlo, verbose = FALSE)
+
+###########################################################################
+##Ridge Fixed-simulation 
+ridge_simulations.mse <- c()
+ridge_simulations.lambda <- c()
+ridge_simulations.beta <- c()
+ridge_simulations.variance <- c()
+ridge_simulations.bias <- c()
+lambdas <- seq(0.5, 10, .5)
+for (lambda in lambdas) {
+  sim <- simulation_random(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
+  ridge_simulations.mse <- c(ridge_simulations.mse, sim$"MSE")
+  ridge_simulations.lambda <- c(ridge_simulations.lambda, lambda)
+  ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
+  ridge_simulations.variance <- c(ridge_simulations.variance, sim$variance)
+  #ridge_simulations.beta <- c()
+}
+
+
+
+bias_variance <- tibble(
+   value = c(ridge_simulations.bias,     lars_simulation$"bias^2",
+             ridge_simulations.variance, lars_simulation$variance),
+   index_name = rep(c("bias", "variance"), each = length(names)),
+   model_name = factor(rep(names, times = 2), levels = names))
+
+
+ggplot(bias_variance, aes(x = model_name, fill = index_name)) +
+    geom_bar(aes(y = value), stat = "identity", position = "stack") +
+    xlab("") + ylab("") + ggtitle("Reducible Error scomposition") +
+    guides(fill = guide_legend(title = "")) +
+    scale_y_log10()
+ggsave("random.png", dpi = 500,
+       width = 16, height = 9)
