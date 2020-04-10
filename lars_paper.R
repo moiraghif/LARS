@@ -119,6 +119,12 @@ lars <- function(X, y, tol = 1e-10) {
 
 
 train <- function(x_train, y_train, method, ...) {
+  ## x_train
+  ## y_train
+  ## x_test
+  ## y_test
+  ## mod <- train(x_train, y_train, lars)
+  ## mod(x_test) >>> y_hat
   n <- nrow(x_train)
   p <- ncol(x_train)
   
@@ -145,7 +151,6 @@ train <- function(x_train, y_train, method, ...) {
     y_standardizer(x_standardizer(x_new) %*% beta, reverse = TRUE)
   }
 }
-
 
 
 get_data <- function(n, p, random_fn) {
@@ -233,7 +238,7 @@ simulation_random <- function(data_generator, beta, sigma, method, iterations, v
   variance_total <- c()
   sum_total <- c()
   y_hat_total <- matrix(NA, nrow = n, ncol = iterations)
-  
+
   start_time <- Sys.time()
   for (i in 1:iterations) {
     x_train <- data_generator()
@@ -247,11 +252,10 @@ simulation_random <- function(data_generator, beta, sigma, method, iterations, v
     y_hat <- model(x_test)
     y_hat_total[, i] <- y_hat
     err_total <- c(err_total, error(y_test, y_hat))
-    bias_total <- c(bias_total, mean((y_hat - mu))^2) 
+    bias_total <- c(bias_total, mean((y_hat - mu))^2)
     variance_total <- c(variance_total, mean(apply(y_hat_total, 1, var, na.rm=TRUE)))
     sum_total <- c(sum_total,bias_total[i]+variance_total[i])
     #Print completion time
-    Sys.sleep(0.1)
     cat("\r","Iteration n.",i)
   }
   stop_time <- Sys.time()
@@ -315,7 +319,7 @@ opt.fixed = 2 * sigma^2 * p / n
 
 #Random
 fixed_to_random = (sigma^2 * p / n) * (p + 1) / (n - p - 1)
-opt.random = opt.fixed*(2+(p+1)/())
+opt.random = opt.fixed*(2+(p+1)/(n - p -1))
 err.random = err.train + opt.random
 Cps.random = Cps.fixed + fixed_to_random
 ###########################################################################
@@ -427,8 +431,7 @@ plot2
 anim_save("/Users/riccardocervero/Desktop/Plot2.gif",plot2)
 
 ###########################################################################
-##Ridge Fixed-simulation
-monte_carlo <- 1e2
+monte_carlo <- 2
 ridge_simulations.mse <- c()
 ridge_simulations.lambda <- c()
 ridge_simulations.beta <- c()
@@ -443,17 +446,19 @@ for (lambda in lambdas) {
   ridge_simulations.bias <- c(ridge_simulations.bias, sim$"bias^2")
   ridge_simulations.variance <- c(ridge_simulations.variance, sim$variance)
   #ridge_simulations.beta <- c()
+  break
 }
 
 
 ##Ridge Random-simulation
-monte_carlo <- 1e2
+monte_carlo <- 1e3
 ridge_simulations.mse <- c()
 ridge_simulations.lambda <- c()
 ridge_simulations.beta <- c()
 ridge_simulations.variance <- c()
 ridge_simulations.bias <- c()
 lambdas <- seq(0.5, 5, .5)
+lars_simulation <- simulation_random(x_generator, beta_true, sigma, lars, monte_carlo, verbose=FALSE)
 for (lambda in lambdas) {
   print(paste0("Lambda: ",lambda,"\n"))
   sim <- simulation_random(x_generator, beta_true, sigma, ridge, monte_carlo, verbose=FALSE, lambda=lambda)
@@ -479,3 +484,30 @@ ggplot(bias_variance, aes(x = model_name, fill = index_name)) +
   scale_y_log10()
 ggsave("random.png", dpi = 500,
        width = 16, height = 9)
+
+
+phi <- get_function(beta_true, sigma)
+X <- x_generator()
+y <- phi(X)
+
+ridge <- function(x, y, lambda) {
+  n <- nrow(x)
+  p <- ncol(x)
+  beta <- solve(crossprod(x) + lambda * diag(p)) %*% crossprod(x, y)
+  #beta <- solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y
+  y_hat <- x %*% beta
+  list(coef = beta,
+       prevision = y_hat)
+}
+lambdas = seq(0.5, 5, .5)
+nlambda = length(lambdas)
+hatbetas <- matrix(NA,ncol=p, nrow=nlambda)
+Vars <- matrix(NA,ncol=p, nrow=nlambda)
+
+for (l in 1:nlambda){
+  lambda = lambdas[l]
+  hatbetas[l,] = ridge(X, y, lambda)$coef  # solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y 
+  W = ridge(X, X, lambda)$coef  # solve(diag(p) + lambda * solve(t(X) %*% X))
+  Vars[l,] = diag( W %*% solve(crossprod(X)) %*% t(W) )
+  }
+matplot(lambdas, hatbetas, type="l")
