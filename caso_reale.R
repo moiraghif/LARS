@@ -156,7 +156,6 @@ train <- function(x_train, y_train, method, ...) {
 }
 
 
-
 size_tr <- floor(0.75 * nrow(real2)) #  caso p > n
 set.seed(123)
 
@@ -174,6 +173,25 @@ mod_lars <- train(x_train, y_train, lars)
 y_hat <- mod_lars(x_test)$prediction
 mse.lars <- mean((y_test-y_hat)^2)
 mse.lars
+
+
+n <- nrow(real2)
+K = 10
+folds <- sample( rep(1:K,length=n) )
+KCV <- vector()
+
+for (k in 1:K){
+  testIndexes <- which(folds==k,arr.ind=TRUE)
+  testData <- real2[testIndexes, ]
+  trainData <- real2[-testIndexes, ]
+  mod <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), lars)
+  y_hat <- mod(as.matrix(testData[-1]))$prediction
+  KCV[k] <- mean((as.matrix(testData[1])-y_hat)^2)
+}
+
+#MSE 
+mean(KCV)
+
 
 
 
