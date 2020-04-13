@@ -224,7 +224,7 @@ simulation_fixed <- function(data_generator, beta, sigma, method,
          "log" = sum_total)
 }
 
-## TODO: fissare test set
+
 simulation_random <- function(data_generator, beta, sigma,
                        method, iterations, verbose = TRUE, ...) {
     error <- function(y, y_hat) mean((y - y_hat)^2)
@@ -234,6 +234,8 @@ simulation_random <- function(data_generator, beta, sigma,
     bias_total <- c()
     variance_total <- c()
     sum_total <- c()
+    x_test <- data_generator()
+    mu <- phi(x_test, noise = FALSE)
     y_hat_total <- matrix(NA, nrow = n, ncol = iterations)
 
     start_time <- Sys.time()
@@ -241,16 +243,15 @@ simulation_random <- function(data_generator, beta, sigma,
         x_train <- data_generator()
         y_train <- phi(x_train)
         n <- nrow(x_train)
-        mu <- phi(x_train, noise = FALSE)
-        x_test <- data_generator()
         y_test <- phi(x_test)
         model <- train(x_train, y_train, method = method, ...)
         y_hat <- model(x_test)$prediction
         y_hat_total[, i] <- y_hat
         err_total <- c(err_total, error(y_test, y_hat))
-        bias_total <- c(bias_total, mean((y_hat - mu))^2)
+        bias_total <- c(bias_total,
+                        mean((rowMeans(y_hat_total, na.rm = T) - mu)^2))
         variance_total <- c(variance_total,
-                            mean(apply(y_hat_total, 2, var, na.rm = TRUE)))
+                            mean(apply(y_hat_total, 1, var, na.rm = TRUE)))
         sum_total <- c(sum_total, bias_total[i] + variance_total[i])
         ## Print completion time
         cat("\r", "Iteration n.", i)
@@ -258,7 +259,7 @@ simulation_random <- function(data_generator, beta, sigma,
     stop_time <- Sys.time()
     av_error <- mean(err_total)
     variance <- variance_total[iterations]
-    bias <- mean(bias_total)
+    bias <- bias_total[iterations]
     if (verbose) {
         print(paste0("Execution time: ", stop_time - start_time))
         print(paste0("Sigma²:   ", sigma^2))
@@ -287,7 +288,7 @@ simulation_random <- function(data_generator, beta, sigma,
 n <- 30
 p <- 50
 p_useless <- 15
-sigma <- 1  # noise variance
+sigma <- 0.01  # noise variance
 monte_carlo <- 1e3
 
 beta_generator <- function(n) matrix(runif(n, +1, +2.5))
@@ -300,16 +301,63 @@ x_generator <- function() get_data(n, p, function(n) runif(n, -10, +10))
 ## LARS SIMULATIONS
 
 ## LARS fixed simulation
-lars_simulation_fixed <- simulation_fixed(x_generator, beta_true, sigma,
-                                          lars, monte_carlo, verbose = TRUE)
+lars_fixed <- simulation_fixed(x_generator, beta_true, sigma,
+                               lars, monte_carlo)
 
 ## LARS random simulation
-lars_simulation_random <- simulation_random(x_generator, beta_true, sigma,
-                                            lars, monte_carlo, verbose = TRUE)
+lars_random <- simulation_random(x_generator, beta_true, sigma,
+                                 lars, monte_carlo)
 
-a <- simulation_random(x_generator, beta_true, sigma, ridge, monte_carlo, lambda = 0.1)
 
-## RIDGE SIMULATIONS
+## RIDGE SIMULATIONS (1)
+
+## RIDGE fixed simulation
+lambdas <- seq(.5, 10, .5)
+ridge_fixed <- list(lambda = c(),
+                    MSE = c(),
+                    MSE_t = c(),
+                    bias = c(),
+                    variance = c(),
+                    pred_error = c())
+for (lambda in lambdas) {
+    sim <- simulation_fixed(x_generator, beta_true, sigma,
+                            ridge, monte_carlo, lambda = lambda)
+    ridge_fixed[["lambda"]] <- c(ridge_fixed[["lambda"]], lambda)
+    ridge_fixed[["MSE_t"]] <- c(ridge_fixed[["MSE_t"]], sim$MSE_theoretical)
+    ridge_fixed[["MSE"]]   <- c(ridge_fixed[["MSE"]], sim$MSE)
+    ridge_fixed[["bias"]]     <- c(ridge_fixed[["bias"]], sim$"bias^2")
+    ridge_fixed[["variance"]] <- c(ridge_fixed[["variance"]], sim$variance)
+    ridge_fixed[["pred_error"]] <- c(ridge_fixed[["pred_error"]],
+                                   sim$"Prediction error")
+}
+
+## RIDGE random simulation
+lambdas <- seq(.5, 10, .5)
+ridge_random <- list(lambda = c(),
+                     MSE = c(),
+                     MSE_t = c(),
+                     bias = c(),
+                     variance = c(),
+                     pred_error = c())
+for (lambda in lambdas) {
+    sim <- simulation_random(x_generator, beta_true, sigma,
+                             ridge, monte_carlo, lambda = lambda)
+    ridge_random[["lambda"]]   <- c(ridge_random[["lambda"]], lambda)
+    ridge_random[["MSE_t"]] <- c(ridge_random[["MSE_t"]], sim$MSE_theoretical)
+    ridge_random[["MSE"]]   <- c(ridge_random[["MSE"]], sim$MSE)
+    ridge_random[["bias"]]     <- c(ridge_random[["bias"]], sim$"bias^2")
+    ridge_random[["variance"]] <- c(ridge_random[["variance"]], sim$variance)
+    ridge_random[["pred_error"]] <- c(ridge_random[["pred_error"]],
+                                    sim$"Prediction error")
+}
+
+
+## save workspace
+save.image("simulation.RData")
+
+
+
+## RIDGE SIMULATIONS (2)
 tr <- function(x) sum(diag(x))
 lambdas <- seq(0.5, 5, .5)
 phi <- get_function(beta_true, sigma)
@@ -392,37 +440,3 @@ for (lambda in lambdas) {
 plot(ridge_sim_random$lambda,
      abs(ridge_sim_random$mse - (ridge_sim_random$bias + ridge_sim_random$var)),
       type = "h")
-
-
-
-
-library(readr)
-df <- read_table2("http://azzalini.stat.unipd.it/Book-DM/yesterday.dat")[-31,] 
-#Fissiamo il training set
-train <- data.frame(x=df$x, y=df$y.yesterday)
-#Stabiliamo la dimensione
-n <- nrow(train)
-#Fissiamo i gradi
-ds = 1:15
-ps = ds + 1
-
-fun <- function(d) if (d==0) lm(y~1, train) else lm(y~poly(x,degree=d), train)
-fits <- lapply(ds, fun)
-MSEs.tr <- unlist( lapply(fits, deviance) )/n
-# compute ErrF
-sigmatrue = 0.01
-ftrue <- c(0.4342,0.4780,0.5072,0.5258,0.5369,0.5426,0.5447,0.5444,0.5425,0.5397,0.5364,0.5329,0.5294,0.5260,0.5229,0.5200,0.5174,0.5151,0.5131,0.5113,0.5097,0.5083,0.5071,0.5061,0.5052,0.5044,0.5037,0.5032,0.5027,0.5023)
-x = seq(.5,3,length=30)
-Bias2s = sapply(ps, function(p) 
-  mean( ( ftrue - fitted(lm(ftrue ~ poly(x,degree=(p-1)))) )^2 )
-)
-Vars = ps*(sigmatrue^2)/n
-ErrFs = Bias2s + Vars + sigmatrue^2
-hatErrFs = MSEs.tr + (2*sigmatrue^2*ps)/n 
-
-plot(ps, MSEs.tr, type="b", xlab="p", ylab="ErrF")
-lines(ps, hatErrFs, type="b", col=2)
-lines(ps, ErrFs, type="b", col=4)
-legend("topright",c("ErrF","MSE.tr","MSE.tr + Opt"), 
-			 col=c(4,1,2), pch=19)
-ps[which.min(hatErrFs)]
