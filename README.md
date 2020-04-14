@@ -1,5 +1,5 @@
-**Riccardo Cervero**\n
-**Federico Moiraghi**\n
+**Riccardo Cervero**\\
+**Federico Moiraghi**\\
 **Marco Ferrario**
 
 ---------------------------------------------------------------------
