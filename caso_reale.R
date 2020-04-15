@@ -168,13 +168,29 @@ y_train <- as.matrix(train_sample[,1])
 x_test <- as.matrix(test_sample[,-1])
 y_test <- as.matrix(test_sample[,1])
 
-
+# MSE
 mod_lars <- train(x_train, y_train, lars)
-y_hat <- mod_lars(x_test)$prediction
-mse.lars <- mean((y_test-y_hat)^2)
+y_hat_l <- mod_lars(x_test)$prediction
+mse.lars <- mean((y_test-y_hat_l)^2)
 mse.lars
 
+#R2ADJ
 
+n <- nrow(y_test)
+p <- ncol(x_test)
+
+num = n - 1
+den = n - p - 1
+RSS <- sum((y_test - y_hat_l)^2)
+TSS <- sum((y_test-mean(y_test))^2)
+
+R2Adj <- 1-((num/den)*(RSS/TSS)) 
+# 1-((RSS/den)/(TSS/num)) # forumula prof
+R2Adj 
+
+
+
+# Cross Validation Lars
 n <- nrow(real2)
 K = 10
 folds <- sample( rep(1:K,length=n) )
@@ -185,8 +201,8 @@ for (k in 1:K){
   testData <- real2[testIndexes, ]
   trainData <- real2[-testIndexes, ]
   mod <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), lars)
-  y_hat <- mod(as.matrix(testData[-1]))$prediction
-  KCV[k] <- mean((as.matrix(testData[1])-y_hat)^2)
+  y_hat_lcv <- mod(as.matrix(testData[-1]))$prediction
+  KCV[k] <- mean((as.matrix(testData[1])-y_hat_lcv)^2)
 }
 
 #MSE 
@@ -196,13 +212,27 @@ mean(KCV)
 
 
 ridge_mse <- c()
+ridge_r2adj <- c()
 lambdas <- seq(1,2000 , 50)
+n <- nrow(y_test)
+p <- ncol(x_test)
+num = n - 1
+den = n - p - 1
+TSS <- sum((y_test-mean(y_test))^2)
 
 for (lambda in lambdas) {
   mod <- train(x_train, y_train, ridge, lambda=lambda)
-  y_hat <- mod(x_test)$prediction
-  mse <- mean((y_test-y_hat)^2)
+  y_hat_r <- mod(x_test)$prediction
+  mse <- mean((y_test-y_hat_r)^2)
   ridge_mse <- c(ridge_mse, mse)
+  
+  # questa parte la riscrivo meglio
+  RSS <- sum((y_test - y_hat_r)^2)
+
+  R2Adj <- 1-((num/den)*(RSS/TSS)) 
+  ridge_r2adj <- c(ridge_r2adj, R2Adj)
+
+  
 }
 
 
@@ -232,6 +262,70 @@ yhat.ridge = predict(fit.ridge, s=hatlambda, newx=x_test, exact=T)
 mse_ridge <- mean((y_test-yhat.ridge)^2)
 mse_ridge
 
+
+
+
+################# Grafici #################
+
+# per vederli meglio su windows
+trace(grDevices:::png, quote({
+  if (missing(type) && missing(antialias)) {
+    type <- "cairo-png"
+    antialias <- "subpixel"
+  }
+}), print = FALSE)
+
+
+##
+## Corrplot
+##
+
+# da valutare, le variabili sono moltissime, qua ci sono quelle con la correlazione più alta con la y e quelle più correlate tra loro
+
+
+corr <- cor(real2)
+
+corr[lower.tri(corr,diag=TRUE)] <- NA 
+corr[corr == 1] <- NA 
+corr <- as.data.frame(as.table(corr))
+corr <- na.omit(corr) 
+corr2 <- corr[corr$Var1=='y' ,] 
+corr2 <- subset(corr2, abs(Freq) > 0.3) 
+corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è così alta per limitare il numero di variabili nel grafico
+corrp <- rbind(corr2, corr3)
+mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
+ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
+
+
+##
+## Osservati vs predetti
+##
+
+db <- data.frame(seq(1:nrow(y_test)),cbind(y_test, y_hat_l))
+names(db) <- c("index","y_test", "y_hat")
+
+ggplot() + 
+  geom_line(data = db, aes(x = index, y = y_hat_l, color = "#00AFBB"), lwd=1.1) +
+  geom_line(data = db, aes(x = index, y = y_test, color = "#FC4E07"), lwd=1.1) +
+  xlab("Index") +
+  ylab('Values') +
+  theme_minimal() +
+  labs(title = "Observed values vs Predicted values") +
+  scale_color_discrete(name = "Values", labels = c("Predicted", "Observed"))
+
+
+
+db <- data.frame(seq(1:nrow(y_test)),cbind(y_test, y_hat_r))
+names(db) <- c("index","y_test", "y_hat")
+
+ggplot() + 
+  geom_line(data = db, aes(x = index, y = y_hat_r, color = "#00AFBB"), lwd=1.1) +
+  geom_line(data = db, aes(x = index, y = y_test, color = "#FC4E07"), lwd=1.1) +
+  xlab("Index") +
+  ylab('Values') +
+  theme_minimal() +
+  labs(title = "Observed values vs Predicted values") +
+  scale_color_discrete(name = "Values", labels = c("Predicted", "Observed"))
 
 
 
