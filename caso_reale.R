@@ -232,3 +232,72 @@ yhat.ridge = predict(fit.ridge, s=hatlambda, newx=x_test, exact=T)
 mse_ridge <- mean((y_test-yhat.ridge)^2)
 mse_ridge
 
+
+
+
+
+
+##
+## grafici LARS
+##
+
+
+## presa da train()
+standardizer <- function(x) {
+    mu <- colMeans(x)
+    sigma <- as.double(sqrt(diag(var(x))))
+    function(y, reverse = FALSE) {
+        if (reverse) {
+            I <- diag(length(sigma)) * sigma
+            t(t(y %*% I) + mu)
+        } else {
+            I <- diag(length(sigma)) / sigma
+            t(t(y) - mu) %*% I
+        }
+    }
+}
+
+
+## usa tutti i dati
+x_train <- as.matrix(select(real2, -y))
+y_train <- as.matrix(select(real2,  y))
+
+x_standardizer <- standardizer(x_train)
+y_standardizer <- standardizer(y_train)
+
+mod <- lars(x_standardizer(x_train),
+            y_standardizer(y_train))
+
+## rimuovi i coefficienti nulli
+betas <- mod$log
+betas[betas == 0] <- NA
+
+selected_variables <- rowSums(is.na(betas)) < ncol(betas)
+betas <- betas[selected_variables, ]
+rownames(betas) <- colnames(x_train)[selected_variables]
+
+
+## rigira i dati in un formato facilmente interpretabile da ggplot
+data_plot <- tibble(
+    variable = c(),
+    value = c(),
+    iteration = c())
+
+p <- ncol(betas)
+for (i in seq_len(nrow(betas))) {
+    data_plot <- data_plot %>%
+        add_row(variable = rownames(betas)[i],
+                value = betas[i, ],
+                iteration = 1:p)
+}
+
+
+## plot dei risultati
+(ggplot(data_plot, aes(x = iteration, y = value, colour = variable)) +
+    geom_line() + geom_hline(yintercept = 0) +
+    theme_minimal() + theme(legend.position = "none") +
+    xlab("Iteration") + ylab("coefficient") +
+    ggtitle("LARS coefficient")) %>%
+
+    ggsave(filename = "caso_reale_lars.png", device = png(),
+           dpi = 500, width = 16, height = 9)
