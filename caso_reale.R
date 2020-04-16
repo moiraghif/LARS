@@ -4,7 +4,7 @@ rm(list = ls())
 library(tidyverse)
 
 real2 <- read_csv("dati.csv")
-rownames(real2) <- real2$X
+#rownames(real2) <- real2[,1]
 real2 <- real2[,-1]
 
 
@@ -45,13 +45,13 @@ lars <- function(X, y, tol = 1e-10) {
 
                                         # page 6
     ## mu is the projection of y on L
-    mu <- matrix(rep(0, n))             # n Ã 1
+    mu <- matrix(rep(0, n))             # n ÃÂ 1
 
     for (i in 1:max_iter) {
                                         # equation 2.1
         ## each c_j represent the correlation of the j-th variable
         ## between X and the projection on the sub-space L
-        c_hat <- crossprod(X, y - mu)   # vector, p Ã 1
+        c_hat <- crossprod(X, y - mu)   # vector, p ÃÂ 1
 
                                         # equation 2.9
         ## the "active" subset includes each variable that is as much
@@ -63,29 +63,29 @@ lars <- function(X, y, tol = 1e-10) {
                                         # equation 2.10
         ## a vector of signs of correlation, for multiply the X matrix
         ## to use only positive correlations
-        s <- as.vector(sign(c_hat))     # vector, p Ã 1
+        s <- as.vector(sign(c_hat))     # vector, p ÃÂ 1
 
                                         # equation 2.4
         ## the X matrix that includes only active variables (with
         ## positive correlation)
-        Xa <- (X %*% diag(s))[, active]  # matrix, n Ã a
+        Xa <- (X %*% diag(s))[, active]  # matrix, n ÃÂ a
 
                                         # equation 2.5
                                         # (inverse is computed for performance)
         ## this part is quite complicated, see Paper for details
-        Ga <- solve(crossprod(Xa))      # matrix, a Ã a
-        ones <- matrix(rep(1, alpha))   # vector, a Ã 1
+        Ga <- solve(crossprod(Xa))      # matrix, a ÃÂ a
+        ones <- matrix(rep(1, alpha))   # vector, a ÃÂ 1
         A <- as.double(crossprod(ones, Ga) %*% ones) ^-0.5
                                         # scalar
 
                                         # equation 2.6
         ## u is the direction of the update
-        w <- A * Ga %*% ones            # vector a Ã 1
-        u <- Xa %*% w                   # vector n Ã 1
+        w <- A * Ga %*% ones            # vector a ÃÂ 1
+        u <- Xa %*% w                   # vector n ÃÂ 1
 
                                         # equation 2.11
         ## this part is not well described in the Paper
-        a <- crossprod(X, u)            # vector p Ã 1
+        a <- crossprod(X, u)            # vector p ÃÂ 1
 
                                         # equation 2.13
         ## gamma is the intensity of the update: "We take the largest
@@ -121,40 +121,39 @@ lars <- function(X, y, tol = 1e-10) {
 
 
 train <- function(x_train, y_train, method, ...) {
-    ## execution example: mod <- train(x_train, y_train, lars)
-    ## mod(x_test)$prediction >>> y_hat
-
-    standardizer <- function(x) {
-        mu <- colMeans(x)
-        sigma <- as.double(sqrt(diag(var(x))))
-        function(y, reverse = FALSE) {
-            if (reverse) {
-                I <- diag(length(sigma)) * sigma
-                t(t(y %*% I) + mu)
-            } else {
-                I <- diag(length(sigma)) / sigma
-                t(t(y) - mu) %*% I
-            }
-        }
+  ## execution example: mod <- train(x_train, y_train, lars)
+  ## mod(x_test)$prediction >>> y_hat
+  
+  standardizer <- function(x) {
+    mu <- colMeans(x)
+    sigma <- as.double(sqrt(diag(var(x))))
+    function(y, reverse = FALSE) {
+      if (reverse) {
+        I <- diag(length(sigma)) * sigma
+        t(t(y %*% I) + mu)
+      } else {
+        I <- diag(length(sigma)) / sigma
+        t(t(y) - mu) %*% I
+      }
     }
-
-    x_standardizer <- standardizer(x_train)
-    y_standardizer <- standardizer(y_train)
-
-    beta <- as.matrix(method(x_standardizer(x_train),
-                          y_standardizer(y_train), ...)$coef)
-
-    predict <- function(x_new) {
-        x_standardized <- x_standardizer(x_new)
-        y_hat <- x_standardized %*% beta
-        predictions <- y_standardizer(y_hat, reverse = TRUE)
-        list(prediction = predictions,
-             y_standardized = y_hat,
-             x_standardized = x_standardized,
-             coef = beta)
-    }
+  }
+  
+  x_standardizer <- standardizer(x_train)
+  y_standardizer <- standardizer(y_train)
+  
+  beta <- as.matrix(method(x_standardizer(x_train),
+                           y_standardizer(y_train), ...)$coef)
+  
+  predict <- function(x_new) {
+    x_standardized <- x_standardizer(x_new)
+    y_hat <- x_standardized %*% beta
+    predictions <- y_standardizer(y_hat, reverse = TRUE)
+    list(prediction = predictions,
+         y_standardized = y_hat,
+         x_standardized = x_standardized,
+         coef = beta)
+  }
 }
-
 
 size_tr <- floor(0.75 * nrow(real2)) #  caso p > n
 set.seed(123)
@@ -175,18 +174,16 @@ mse.lars <- mean((y_test-y_hat_l)^2)
 mse.lars
 
 #R2ADJ
-
-n <- nrow(y_test)
+n_test <- nrow(y_test)
 p <- ncol(x_test)
-
-num = n - 1
-den = n - p - 1
-RSS <- sum((y_test - y_hat_l)^2)
+num <- n_test - 1
+den <- n_test - p - 1
+RSS_l <- sum((y_test - y_hat_l)^2)
 TSS <- sum((y_test-mean(y_test))^2)
 
-R2Adj <- 1-((num/den)*(RSS/TSS)) 
+R2Adj_l <- 1-((num/den)*(RSS_l/TSS)) 
 # 1-((RSS/den)/(TSS/num)) # forumula prof
-R2Adj 
+R2Adj_l
 
 
 
@@ -200,39 +197,28 @@ for (k in 1:K){
   testIndexes <- which(folds==k,arr.ind=TRUE)
   testData <- real2[testIndexes, ]
   trainData <- real2[-testIndexes, ]
-  mod <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), lars)
-  y_hat_lcv <- mod(as.matrix(testData[-1]))$prediction
+  mod_lcv <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), lars)
+  y_hat_lcv <- mod_lcv(as.matrix(testData[-1]))$prediction
   KCV[k] <- mean((as.matrix(testData[1])-y_hat_lcv)^2)
 }
 
-#MSE 
-mean(KCV)
+mean(KCV) # mse
 
 
 
 
 ridge_mse <- c()
 ridge_r2adj <- c()
-lambdas <- seq(1,2000 , 50)
-n <- nrow(y_test)
-p <- ncol(x_test)
-num = n - 1
-den = n - p - 1
-TSS <- sum((y_test-mean(y_test))^2)
+lambdas <- seq(1,2000,50)
 
 for (lambda in lambdas) {
-  mod <- train(x_train, y_train, ridge, lambda=lambda)
-  y_hat_r <- mod(x_test)$prediction
-  mse <- mean((y_test-y_hat_r)^2)
-  ridge_mse <- c(ridge_mse, mse)
-  
-  # questa parte la riscrivo meglio
-  RSS <- sum((y_test - y_hat_r)^2)
-
-  R2Adj <- 1-((num/den)*(RSS/TSS)) 
-  ridge_r2adj <- c(ridge_r2adj, R2Adj)
-
-  
+  mod_r <- train(x_train, y_train, ridge, lambda=lambda)
+  y_hat_r <- mod_r(x_test)$prediction
+  mse_r <- mean((y_test-y_hat_r)^2)
+  ridge_mse <- c(ridge_mse, mse_r)
+  RSS_r <- sum((y_test - y_hat_r)^2)
+  R2Adj_r <- 1-((num/den)*(RSS_r/TSS)) 
+  ridge_r2adj <- c(ridge_r2adj, R2Adj_r)
 }
 
 
@@ -263,7 +249,10 @@ mse_ridge <- mean((y_test-yhat.ridge)^2)
 mse_ridge
 
 
-
+mod_r <- train(x_train, y_train, ridge, lambda=hatlambda)
+y_hat_r <- mod_r(x_test)$prediction
+mse_r <- mean((y_test-y_hat_r)^2)
+mse_r
 
 ################# Grafici #################
 
@@ -291,7 +280,7 @@ corr <- as.data.frame(as.table(corr))
 corr <- na.omit(corr) 
 corr2 <- corr[corr$Var1=='y' ,] 
 corr2 <- subset(corr2, abs(Freq) > 0.3) 
-corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è così alta per limitare il numero di variabili nel grafico
+corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia Ã¨ cosÃ¬ alta per limitare il numero di variabili nel grafico
 corrp <- rbind(corr2, corr3)
 mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
 ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
@@ -326,6 +315,7 @@ ggplot() +
   theme_minimal() +
   labs(title = "Observed values vs Predicted values") +
   scale_color_discrete(name = "Values", labels = c("Predicted", "Observed"))
+
 
 
 
