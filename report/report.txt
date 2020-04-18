@@ -1,0 +1,250 @@
+\documentclass[a4page, 12pt]{article}
+
+
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage[margins=1.2in]{geometry}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\usepackage{tcolorbox}
+\usepackage{graphicx}
+
+\usepackage{minted}
+\usemintedstyle{manni}
+
+\title{
+    \textbf{High Dimentional Data Analysis} \\
+    \large{L'algoritmo LARS}}
+
+\author{
+    Riccardo Cervero, 794126 \and
+    Federico Moiraghi, 799735 \and
+    Marco Ferrario, 000000
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{tcolorbox}[colback=white, colframe=gray, boxrule=0.1mm, sharp corners=all]
+\begin{abstract}
+    Gli obiettivi principali di questo progetto sono la presentazione e l'applicazione di un metodo in grado di eseguire stime di regressione efficaci anche quando la dimensionalità dei dati è molto superiore al numero di osservazioni: l'algoritmo \textit{Least-Angle Regression} (LARS). In particolare, dopo aver introdotto le sue caratteristiche, verranno eseguite due simulazioni Montecarlo - rispettivamente di tipo \textit{Fixed-X setting} e  \textit{Random-X setting} - col fine di analizzare la scomposizione dell'errore di prevesione. Infine, la metodologia sarà testata su un caso di studio reale riguardante il campo della bioinformatica. In entrambe le applicazioni, i risultati dell'algoritmo LARS verranno confrontati con quelli prodotti da una regressione Ridge.
+\end{abstract}
+\end{tcolorbox}
+
+\tableofcontents
+\newpage
+
+\section{Tecniche di \textit{shrinkage}}  % RCrvro
+Nell'epoca dei \textit{Big Data}, in cui sono facilmente disponibili grandi quantità di dati per diversi casi applicativi, la classica analisi di regressione, basata sulla stima dei minimi quadrati ordinari dei coefficienti, fatica nella costruzione di un modello lineare in grado di descrivere efficacemente la relazione tra la variabile $y$ e le covariate $X$, e produce una stima dell'errore poco affidabile.
+In particolare, quando la dimensionalità dei dati $p$ è maggiore della loro cardinalità $n$, sorgono alcuni problemi che il metodo OLS non è in grado di gestire in modo appropriato.
+La prima conseguenza consiste in un crescente rischio di multicollinearità tra le covariate, che impedirebbe l'ottenimento di risultati corretti dalla regressione, sovrastimando gli indici di bontà di adattamento e sottostimando la significatività statistica dei singoli coefficienti.
+In secondo luogo, la presenza di troppe colonne potrebbe causare l'evento di \textit{overfitting}, che si verifica quando l'iperpiano di regressione non è in grado di catturare il segnale principale, poiché eccessivamente trasportato dal rumore da cui il \textit{training set} è caratterizzato.
+In questa situazione, il modello avrà una generalizzazione bassa e produrrà un errore elevato su nuovi dati.
+Inoltre, nel caso estremo di dati ad alta dimensionalità, cioè quando $p \gg n$, s'incorre nel grave problema di supercollinearità: il rango della matrice del disegno è inferiore a $p$, quindi il prodotto incrociato $X'X$ sarà un matrice singolare, e non potrà quindi essere invertito, rendendo impossibile una stima unica dei parametri di regressione.
+Per i motivi sopra citati, è più ragionevole scegliere un modello parsimonioso, che dipenda ovvero da un minor numero di variabili esplicative e, di conseguenza, sia anche più interpretabile.
+A tal proposito, sono state proposte varie metodologie utili al fine di ridurre la dimensionalità del modello, tra cui le cosiddette tecniche di "shrinkage", le quali consentono di contrarre i valori dei coefficienti verso lo zero attraverso una penalità, al fine di ridurre la variabilità della funzione di regressione.
+Nel caso in cui alcune stime finiscano per essere annullate, il metodo avrà effettuato un'implicita \textit{feature selection}.
+Tra le tecniche di "shrinkage", verranno presentate la regressione \textit{Ridge} e l'algoritmo \textit{Least-Angle Regression} (LARS).
+
+\subsection{Regressione \textit{Ridge}}
+La supercollinearità causata dall'alta dimensionalità può essere risolta con un metodo ideato da Hoerl e Kennard: il prodotto $X' X$ è reso invertibile grazie all'aggiunta di un componente di penalità $\lambda I_p$ (con $\lambda \ge 0$), ottenendo un nuovo stimatore dei coefficienti di regressione $\hat{\beta}$, definito \textit{stimatore Ridge}:
+$$\hat{\beta}^{\lambda}=(X'X+\lambda I_p)^{-1}X'y$$
+dove $\lambda$ è il parametro di regolarizzazione pari alla norma $L_2$, tale per cui:
+\begin{itemize}
+    \item se $\lambda=0$, la soluzione coincide con il quella derivante dal metodo ai minimi quadrati ordinari;
+    \item se $\lambda>0$, si produce una penalizzazione sul punto di minimo della funzione di perdita $D_{Ridge}^{(\beta,\lambda)}$.
+\end{itemize}
+Il valore atteso $\mathbb{E}[\hat{\beta}^{\lambda}]$ si dimostra essere pari a $(X'X+\lambda I_p)^{-1}(X'X)\beta\neq\beta$, dimostrando quindi che $\hat{\beta}^{\lambda}$ è distorto.
+Invece, la varianza dello stimatore $Var(\hat{\beta}^{\lambda})$, oltre che dal parametro di \textit{tuning}, dipende dall'errore irriducibile $\sigma^2$, dall'inversa del prodotto incrociato della matrice del disegno e da un operatore lineare $w^{\lambda}=(X'X+\lambda I_p)^{-1}X'X$: $Var(\hat{\beta}^{\lambda})=\sigma^2w^{\lambda}(X'X)^{-1}(w^{\lambda})'$.\\
+Per quanto riguarda i valori stimati, poichè il vettore delle risposte $\hat{y}^{\lambda}$ sarà pari a
+$X(X'X+\lambda I_p)^{-1}X'y$, i residui non saranno più ortogonali a $\hat{y}^{\lambda}$.\\
+Infine, è possibile dimostrare come questa tecnica di \textit{shrinkage}, interpretabile come un problema di penalizzazione, o, in alternativa, di ottimizzazione vincolata, oltre ad avere l'effetto di risolvere efficacemente la supercollinearità fra i regressori, riesca a produrre, per un'opportuna scelta di $\lambda$, un errore quadratico medio dello stimatore minore di quello offerto dal metodo \textit{OLS}.
+
+\subsection{Algoritmo \textit{LARS}}
+Nonostante sia un'ottima soluzione per contrarre la varianza della funzione di regressione, il metodo Ridge è, in realtà, raramente in grado di effettuare una vera e propria \textit{feature selection}, ovvero di annullare i coefficienti che moltiplicano le variabili meno rilevanti per descrivere il fenomeno di studio. Questa limitazione deriva dalla scelta di una norma $L_2$ come componente di penalizzazione. Essendo questa pari alla somma dei quadrati degli stimatori $||\beta||_2^2=\sum^P_{j=1}|\beta_j^2|$, si configura come una funzione lineare in y, dunque derivabile. Pertanto, considerando l'esempio più semplice di una regressione su due covariate $X_1$ e $X_$, se si ipotizzasse di rappresentare graficamente la soluzione al problema di minimizzazione vincolata, più o meno rigidamente a seconda del valore di $\lambda$, dalla penalizzazione della norma, si osserverebbe che il vettore composto dalle stime dei due coefficienti si troverebbe in corrispondenza del punto di tangenza fra il confine della regione ammissibile e la curva di livello dell'errore quadratico medio. Tuttavia, avendo scelto la norma $L_2$ come vincolo, la regione ammissibile apparirà come un'area circolare attorno all'origine. Come conseguenza di ciò, la soluzione Ridge riuscirà a contrarre il valore di uno dei due stimatori vicino allo zero, ma raramente potrà annullarlo, diminuendo l'influenza ma mantenendo attiva la data covariata. Questa problematica è ben visibile nella Figura 1.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.45\linewidth]{ridge.png}
+    \caption{Soluzione grafica offerta dal metodo \textit{Ridge} al problema di minimizzazione vincolata: l'area circolare è la regione ammissibile legata al vincolo della somma dei coefficienti quadrati. Le curve rosse sono interpretabili come le curve di livello dell'errore dal vettore dei coefficienti reali $\hat{\beta}$.}
+    \label{fig:lars-fixed}
+\end{figure}
+
+Nasce pertanto la necessità di adottare metodologie che producano una soluzione sparsa, cioè in grado di fare una selezione continua del modello più parsimonioso nei limiti imposti dalla minimizzazione dell'errore quadratico medio.
+
+L'obiettivo viene raggiunto sostituendo la norma $L_1$ alla norma $L_2$ come componente di penalizzazione regolata dal parametro di \textit{tuning} $\lambda$. Essendo pari alla somma dei valori assoluti dei coefficienti $||\beta||_1=\sum^P_{j=1}|\beta_j|$, la norma $L_1$ è una funzione non lineare in y, pertanto non derivabile. Ipotizzando la medesima situazione dell'esempio precedente, la nuova soluzione di regressione sarà ancora rappresentata dal punto di tangenza fra la curva di livello dell'errore e il confine della regione ammissibile. Tuttavia, l'area disegnata dal vincolo della norma assoluta non apparirà più come una circonferenza, bensì come un rombo attorno all'origine. In questo caso, il punto ottimo non potrà essere il frutto di alcun compromesso fra $X_1$ e $X_2$, ma si troverà necessariamente su uno dei due assi, annullando il valore di stima dell'altro, ed effettuando perciò una vera selezione del modello. Le caratteristiche della soluzione con norma $L_1$ sono ben mostrate dalla Figura 2.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.45\linewidth]{l1.png}
+    \caption{Soluzione grafica offerta da una penalizzazione $L_1$ al problema di minimizzazione vincolata.}
+    \label{fig:lars-fixed}
+\end{figure}
+Tale operazione non effettuerà una rotazione del vettore dei coefficienti, che corrispondeva - nel caso limitato della regressione \textit{Ridge} - a una sola contrazione dei valori, bensì una traslazione, ottenendo una stima sparsa.
+
+Tra i metodi che sfruttano la norma $L_1$, il più popolare è sicuramente il metodo \textit{LASSO}, di cui esistono alcune varianti. Una di esse consiste nell'algoritmo \textit{Least-Angle Regression (LARS)}. Il \textit{LARS} può essere anche considerato come una versione del metodo di selezione del modello chiamato \textit{Forward Selection} - o, anche, \textit{Forward Stepwise Regression} -, il quale viene descritto da \textit{Weisberg}\cite{A} come segue: data una collezione di possibili predittori, si seleziona quello avente maggior valore assoluto di correlazione con la variabile risposta y, nominato $x_{j1}$, e si esegue una regressione lineare semplice di y su $x_{j1}$. Questa operazione produce un vettore dei residui ortogonale rispetto a $x_{j1}$, il quale viene a sua volta considerato come variabile risposta nello step successivo. Ciò significa che gli altri candidati vengono proiettati ortogonalmente a $x_{j1}$, ripetendo quindi il processo di selezione del secondo predittore maggiormente correlato con $x_{j1}$. Dopo $k$ step, si otterrà un insieme di variabili esplicative $x_{j1},x_{j2},...,x_{jk}$, che verrà infine utilizzato per costruire il modello lineare k-dimensionale finale. La \textit{Forward Selection} viene definita come una tecnica di modellazione \textit{"greedy"}, poiché, ad esempio, in corrispondenza del secondo step potrebbe eliminare predittori rilevanti e altamente correlati con $x_j1$. L'alternativa a questo metodo superficiale è denominata \textit{Forward Stagewise}, un procedimento da un lato molto più prudente - in quanto considera molteplici correlazioni - , ma dall'altro eccessivamente costoso, richiedendo un numero elevato di piccoli step prima di convergere al modello finale. L'algoritmo \textit{LARS} nasce come un compromesso fra le due metodologie: grazie ad una formulazione semplice, esso compie step meno ampi dell'avida \textit{Forward Selection}, ma comunque non brevi come quelli della \textit{Forward Stagewise}, riuscendo al contempo sia ad acquisire più precisione sia a ridurre il peso computazionale di almeno un ordine di grandezza. Infatti, grazie a questa accelerazione della computazionale, è dimostrato che l'algoritmo richieda soltanto $p$ iterazioni per ottenere il set completo delle soluzioni, dove $p$ è il numero di covariate. Al contempo, esso mantiene la proprietà di parsimonia desiderata: solo un sotto-insieme degli stimatori $\hat{\beta_j}$ è non nullo. Essendo strettamente connesso al metodo \textit{LASSO}, tramite le iterazioni appena spiegate, esso fornisce, in maniera estremamente efficiente, l'intera \textit{Lasso path solution}.
+
+Il nome \textit{Least-Angle Regression} deriva proprio dalla geometria dell'algoritmo, che può essere riassunta in maniera più precisa nelle seguenti fasi:
+\begin{enumerate}
+    \item Vengono inizializzati a zero i valori di tutti i coefficienti di regressione
+    \item Viene trovato il candidato più correlato con la variabile risposta $y$, denominato, per esempio, $x_{j1}$
+    \item Il vettore dei coefficienti subisce lo spostamento più lungo possibile in direzione del predittore $x_{j1}$, fin quando un altro candidato, denominato $x_{j2}$, ha almeno la stessa correlazione con il residuo attuale, ovvero derivato dalla regressione $y\sim x_{j1}$
+    \item A questo punto, anziché considerare $x_{j1}$ come variabile risposta della nuova iterazione - come effettuato dalla \textit{Forward Selection} -, si procede in direzione equiangolare fra i due predittori $x_{j1}$ e $x_{j2}$, fin quando anche un terzo candidato $x_{j3}$ ha almeno la stessa correlazione con il residuo attuale degli altri due
+    \item L'algoritmo continua a procedere in direzione equiangolare fra le variabili man mano selezionate - in questo caso $x_{j1}$ e $x_{j2}$ - e la nuova aggiunta - qui $x_{j3}$ -, seguendo quella che viene perciò definita direzione \textit{least-angle}, fin quando un ulteriore candidato acquisisce il requisito per entrare a far parte del modello finale. 
+\end{enumerate}
+La parsimonia del metodo risulta nel seguente meccanismo: poichè ad ogni iterazione viene aggiunta una covariata al modello, allora dopo $k$ step - con $k$ fissato -, solo $p-k$ coefficienti avranno valore nullo.
+
+La strategia equiangolare può essere rappresentata in Figura 3.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\linewidth]{equiang.png}
+    \caption{L'algoritmo \textit{LARS} nel caso in cui il numero di covariate sia $p=2$. La linea blu riproduce il movimento dell'algoritmo \textit{LARS}, mentre la linea verde disegna la bisettrice fra gli assi relativi ai candidati considerati. La linea "a scaletta" segue i piccoli spostamenti prodotti da un ipotetico approccio \textit{Forward Stagewise}.}
+    \label{fig:lars-fixed}
+\end{figure}
+
+Si ipotizza il caso più semplice in cui $p=2$, e si definisce:
+\begin{itemize}
+    \item $\hat{\mu}=X\hat{\beta}$ come il vettore delle stime di $y$,
+    \item $\Bar{y}_2$ come la proiezione di $y$ nello spazio lineare $\mathcal{L}(X_1,X_2)$.
+\end{itemize}
+Il vettore delle stime viene inizializzato nel punto $\hat{\mu}=0$. Nella situazione presentata, il vettore residuale $\Bar{y}_2-\hat{\mu}_0$ ha una maggior correlazione con il candidato $x_1$, essendo più vicino al relativo asse. Il successivo vettore di stima \textit{LARS} sarà dunque $\hat{\mu}_1=\hat{\mu}_0+\hat{\gamma}_1x_1$, dove $\hat{\gamma}_1$ è un parametro scelto in modo che il nuovo vettore di residui $\Bar{y}_2-\hat{\mu}_1$ bisechi l'angolo fra $x_1$ e $X_2$. Poi, il terzo vettore di stima sarà $\hat{\mu}_2=\hat{\mu}_1+\hat{\gamma}_2u_2$, dove $u_2$ è l'unità bisettrice. Infine, poichè le covariate sono soltanto due, il processo terminerebbe in $\hat{\mu}_2=\Bar{y}_2$. Pertanto, la stima viene spostata nello spazio lineare in direzione del candidato più correlato, con lunghezza del passo pari a quella sufficiente per rendere il vettore dei residui $\Bar{y}_2-\hat{\mu}$ ugualmente correlato ai candidati presi in considerazione - qui $x_1$ e $x_2$, circostanza che si verifica, appunto, quando il vettore dei residui biseca l'angolo fra di essi:
+$$c_1(\hat{\mu})=c_2(\hat{\mu}).$$
+La differenza fra la classica \textit{Forward Selection} e il metodo \textit{LARS} dipende proprio dalla scelta dell'ampiezza del passo $\hat{\gamma}$: in questo caso, il primo algoritmo dei due citati compierebbe un passo tale per cui $\hat{\mu}_1=\Bar{y}_1$, ovvero abbastanza lungo per eguagliare la stima alla proiezione di $y$ nello spazio lineare $\mathcal{L}(X_1)$; il secondo, invece, trova una misura intermedia, che non sia eccessivamente avida, né comporti un eccessivo costo computazionale. A tal proposito, la linea "a scaletta" in Figura 3 ipotizza quali potrebbero essere i piccoli spostamenti effettuati dal metodo \textit{Forward Stagewise}.
+
+In Figura 4, invece, è possibile osservare un esempio del movimento del vettore delle stime quando $p=3$.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.6\linewidth]{equiang2.png}
+    \caption{L'algoritmo \textit{LARS} nel caso in cui il numero di covariate sia $p=3$. La linea blu riproduce il movimento dell'algoritmo \textit{LARS}, mentre la linea verde disegna la bisettrice fra gli assi relativi ai candidati considerati.}
+    \label{fig:lars-fixed}
+\end{figure}
+
+Nell'implementazione, il valore di $\hat{\gamma}$ viene calcolato con la seguente formula:
+$$\hat{\gamma}=min^+_{j\in A^c}\{\frac{\hat{C}-\hat{c}_j}{A_A-a_j},\frac{\hat{C}+\hat{c}_j}{A_A+a_j}\}\text{                                                              }\cite{B}$$
+dove
+\begin{itemize}
+    \item $min^+_{j\in A^c}$ indica la minima componente positiva fra ogni scelta di $j$
+    \item $\hat{C}$ è il massimo nel vettore delle correlazioni $\hat{c}$, di cui $\hat{c}_j$ è il j-esimo valore
+    \item $A_A=(1'_A(X'_AX_A)^{-1}1_A)^{-\frac{1}{2}}$, con $X_A$ sottoinsieme della matrice del disegno originale che considera solo un numero predefinito di colonne e $1_A$ vettore di 1 di lunghezza pari al sottoinsieme di colonne $A$
+    \item $a_j$ è il j-esimo valore del vettore dei prodotti interni $a=X'X_AA_A(X'_AX_A)^{-1}1_A$
+\end{itemize}
+
+Le criticità e limitazioni del metodo \textit{LARS} possono essere riassunte nei seguenti punti:
+\begin{enumerate}
+    \item dato che la variabile dipendente studiata è disturbata da una quantità ignota di rumore e poiché l'algoritmo viene utilizzato su una matrice del disegno X ad alta dimensionalità e multi-collineare, non esiste una forte motivazione per ipotizzare che le variabili selezionate abbiano un'alta probabilità di corrispondere alle variabili casuali sottostanti. Questo problema non è in realtà legato solo all'implementazione dell'algoritmo LARS, in quanto criticità comune a tutti gli approcci di \textit{Feature Selection} che cercano di estrarre le componenti deterministiche sottostanti. Tuttavia, poiché LARS si basa su una stima iterativa dei residui, appare particolarmente sensibile agli effetti del rumore. \textit{Weisberg}\cite{C} fornisce un esempio empirico basato su una nuova analisi dei dati originariamente utilizzati per convalidare il metodo LARS, dimostrando come la selezione delle variabili si riveli poco efficace in presenza di predittori altamente correlati;
+    \item spesso i dati ad alta dimensionalità provenienti dalle applicazioni reali mostrano un certo grado di collinearità in  alcune variabili, per cui il difetto spiegato da \textit{Weisberg} limita di fatto l'utilizzo del \textit{LARS} nelle situazioni in cui $p\gg n$.
+\end{enumerate}
+
+
+Infine, è noto che, grazie alle proprie caratteristiche, \textit{LARS} sia associato ad una semplice approssimazione del $C_p$ di \textit{Mallow} che non necessita di ulteriore computazione oltre a quella già richiesta per la stima del vettore $\hat{\beta}$:
+$$C_p(\hat{\mu})=\frac{\left\lVert y-\hat{\mu} \right\rVert^2}{\sigma^2}-n+2\text{df}_{\mu,\sigma^2}\text{                                                              }\cite{B}$$
+dove $\sigma^2$ è l'errore irriducibile, $n$ il numero di osservazioni e $\text{df}_{\mu,\sigma^2}=\sum_{i=1}^n\frac{\text{Cov}(\hat{\mu}_i,y_i)}{\sigma^2}$ i gradi di libertà dello stimatore $\hat{\mu}$.
+
+
+\newpage
+\section{Simulazione}  % moiraghif
+Dopo aver implementato l'algoritmo, si esegue una simulazione col metodo Monte Carlo per scomporre la varianza dei vari modelli e analizzarne meglio le prestazioni in un caso ad alta dimensionalità (\textit{high dimentional}).
+Per tutta la simulazione, si opera con matrici di dimensioni ridotte ($30 \times 50$) ma sempre \textit{high dimentional}: in questo modo si alleggerisce il carico di lavoro della macchina, permettendo quindi di effettuare un numero maggiore di iterazioni.
+La vera funzione $\phi$ (nota e fissa, essendo un ambiente simulativo) è ottenuta tramite la combinazione lineare di un vettore $\beta$ di lunghezza 50, estratto casualmente da una variabile uniforme, a cui sono stati annullati, in modo casuale, 15 valori: in questo modo si elimina completamente la correlazione tra la variabile risposta e i corrispettivi regressori, aggiungendo informazioni superflue nella matrice del disegno $X$.
+In questo caso, sempre \textit{high dimentional} (infatti $50 - 15 = 35 > 30$, il numero di colonne non nulle è comunque maggiore del numero di righe), è necessaria un'operazione di selezione delle \textit{features} da parte del modello.
+
+La matrice del disegno $X$ invece è generata per ogni simulazione (o addirittura iterazione nel caso randomico), estraendo le osservazioni sempre dalla medesima popolazione.
+Le colonne della matrice sono estratte da una variabile uniforme in modo indipendente in modo tale da garantire l'eteroschedasticità e lo stesso ordine di grandezza dei valori (si rimanda al codice), rispettando le premesse dei modelli LARS e RIDGE.
+Per semplicità di implementazione, il \textit{training set} e il \textit{test set} hanno lo stesso numero di dati, permettendo di usare lo stesso generatore e assicurando che tutte le osservazioni siano estratte dalla medesima popolazione.
+
+Si è deciso di non effettuare alcun tipo di \textit{pre-processing} sui dati, essendo privi di semantica, se non la standardizzazione con media nulla e varianza unitaria (richiesta dal modello LARS).
+Inoltre non si aggiunge la colonna dell'intercetta in quanto, avendo media nulla, sarebbe priva di significato per il modello RIDGE e inutile per il modello LARS.
+Per assicurarsi che entrambi i \textit{set} di dati siano sottoposti allo stesso trattamento, si è scritta una \textit{funzione di ordine superiore} (\verb|train|) che si occupa di standardizzare la matrice del disegno processata dal modello, e de-standardizzare il vettore dei risultati per riportarlo nella scala dell'originale.
+
+\subsection{Simulazione \textit{Fixed X-Settings}}
+In questo tipo di simulazione, partendo dalla stessa matrice dei dati $X$ (fissa per tutta la simulazione), si generano a ogni iterazione il vettore di \textit{training} e il vettore di \textit{test} (che pertanto variano solamente per il rumore gaussiano casuale).
+Stimati i parametri del modello sul vettore di \textit{training}, si testa il modello sul vettore di \textit{test}, il tutto per un numero sufficientemente grande di iterazioni (sistema Monte Carlo).
+Salvati i risultati e conoscendo i valori reali della funzione, si può effettuare la scomposizione della varianza.
+
+Per testare la bontà dell'implementazione, si misura la differenza dell'\textit{errore quadratico medio} ($MSE$) teorico (calcolato come somma della varianza e del quadrato della distorsione) e quello ottenuto con la formula
+\begin{equation*}
+    MSE = \frac{1}{n} \sum_{i=1}^n (y^*_i - \hat{y}_i)^2
+\end{equation*}
+Durante l'esecuzione si nota infatti che i due valori tendono a convergere, confermando quindi la correttezza dell'algoritmo (come si vede in figura \ref{fig:lars-fixed}).
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}
+        \includegraphics[width=0.45\linewidth]{conv_lars_fixed-86.png}
+    \end{subfigure}
+    \begin{subfigure}
+        \includegraphics[width=0.45\linewidth]{bv_lars_fixed-97.png}
+    \end{subfigure}
+    \caption{Convergenza degli stimatori del LARS ai loro valori teorici.
+    A sinistra si nota come l'MSE converga al suo valore teorico già dopo poche iterazioni; a destra si vede l'andamento della varianza (in azzurro) e del quadrato della distorsione (in rosso).}
+    \label{fig:lars-fixed}
+\end{figure}
+
+Per i modelli RIDGE, si è eseguito il codice testando con diversi valori del parametro $\lambda$ (senza tuttavia provare ad ottimizzarlo).
+I risultati sono riassunti in figura \ref{fig:fixed-total}.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{fixed_barplot.png}
+    \caption{Andamento della varianza e della distorsione nei vari modelli.
+    Notare come la varianza sia visibile solo nel LARS, essendo nel RIDGE di qualche ordine di grandezza minore rispetto alla distorsione.}
+    \label{fig:fixed-total}
+\end{figure}
+
+Si nota come lo stimatore RIDGE abbia una varianza tendente a $0$, con valori della distorsione che crescono (tendenzialmente) col parametro $\lambda$.
+Questo può essere spiegato dal fatto che l'algoritmo LARS calcola in modo iterativo le stime del vettore $\beta$, effettuando una selezione delle più significative, potendone tuttavia prendere un numero minore rispetto a quelle della funzione reale $\phi$ (risultando quindi distorto e molto variabile rispetto alla selezione).
+Al contrario invece l'algoritmo RIDGE tenta di ottimizzare lo scarto quadratico medio delle stime (con una penalità $\lambda$) considerando l'intera matrice (e dunque tutte le variabili significative).
+Dunque i valori dello stimatore LARS sono maggiormente influenzati dalle oscillazioni casuali del rumore, che rende una variabile più o meno correlata rispetto ad un'altra influenzando quindi il processo di selezione; mentre RIDGE le considera tutte le variabili indipendentemente dalla correlazione con la variabile risposta.
+Sperimentando con la quantità di valori nulli del parametro $\beta$ della funzione $\phi$, si nota infatti che l'errore totale del modello LARS cresce col diminuire delle variabili significative (mostrando di dipendere molto dal rumore), ma diventa paragonabile al RIDGE (con $\lambda$ alti) quando tutte le variabili sono significative.
+La forte varianza delle stime può essere spiegata dal fatto che il numero di osservazioni della matrice del disegno non è così alto da permettere una buona stima dell'errore irriducibile $\sigma$, e della vera correlazione $\varrho$ tra le variabili e la variabile risposta.
+
+Essendo tuttavia usati gli stessi valori della matrice del disegno $X$ per tutte le iterazioni, non si possono fare supposizioni sulla capacità di generalizzazione dei modelli analizzati.
+Si esegue pertanto una simulazione \textit{Random X-Settings} in modo tale da avere dei risultati più accurati.
+
+\subsection{Simulazione \textit{Random X-Settings}}
+In questo tipo di simulazione, i dati sono generati a ogni iterazione; tuttavia per semplicità di implementazione si è deciso di tenere fisso il \textit{test set}, in modo tale da facilitare il calcolo degli indici (per la macchina) con operazioni matriciali, garantendo comunque una buona mappatura dello spazio della funzione stimata $\hat{f}$.
+Questa precauzione non incide sull'efficacia del sistema: infatti i dati usati per la stima del modello così come il vettore risposta del \textit{test set} sono generati a ogni iterazione.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{random_barplot.png}
+    \caption{Nella simulazione randomica, a differenza del caso precedente, la varianza è più marcata: si testa infatti la capacità di generalizzazione del modello in punti dello spazio diversi da quelli usati per l'allenamento.}
+    \label{fig:random-total}
+\end{figure}
+A differenza della simulazione precedente, si nota che la varianza totale del modello è aumentata: questo è facilmente intuibile, dato che si aggiunge casualità nella scelta delle osservazioni.
+Per l'algoritmo RIDGE, si nota che la distorsione delle stime diminuisce all'aumentare del parametro $\lambda$, mentre la varianza (tendenzialmente) aumenta.
+A differenza del caso precedente, tuttavia, si nota che, al diminuire delle variabili significative del vero vettore $\beta$, l'algoritmo RIDGE offre risultati migliori (come mostrato in figura \ref{fig:lars-low-dim}) data la sua selezione iterativa delle variabili significative.
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{random_barplot_low.png}
+    \caption{Andamento dell'errore nei vari modelli con matrice di input $\underset{30 \times 50}{X}$, con 25 variabili significative.}
+    \label{fig:lars-low-dim}
+\end{figure}
+
+Dunque si può concludere che l'algoritmo LARS, a confronto del RIDGE, offre stime estremamente variabili, ma effettua una selezione delle \textit{features} significative che può essere estremamente utile in alcuni contesti \textit{high dimentional}.
+
+
+\newpage
+\section{Applicazione pratica}  % AngusFangus
+
+\newpage
+\begin{thebibliography}{9}
+
+\bibitem{A} 
+Weisberg S., \textit{Applied Linear Regression}, Wiley, New York, 1980.
+ 
+\bibitem{B} 
+\href{http://statweb.stanford.edu/~imj/WEBLIST/2004/LarsAnnStat04.pdf}{Efron B., Hastie T., Johnstone I., Tibshirani R., \textit{Least Angle Regression}, Stanford University, Stanford, 2003.}
+
+
+\bibitem{C} 
+\href{https://arxiv.org/abs/math/0406456}{Discussion by Weisberg, following Efron, B; Hastie, T; Johnstone, I; Tibshirani, R., \textit{"Least Angle Regression"} nella rivista \textit{"Annals of Statistics."}, 32 (2): pp. 407–499.} 
+
+\bibitem{D} 
+Hastie, T; Tibshirani, R.; Friedman J.; \textit{"The Elements of Statistical Learning: Data Mining, Inference, and Prediction"}, Stanford University, Stanford, 2009. 
+
+
+\end{thebibliography}
+
+\end{document}
