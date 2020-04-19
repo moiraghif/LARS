@@ -196,7 +196,7 @@ K = 10
 folds <- sample( rep(1:K,length=n) )
 KCV <- vector()
 
-for (k in 1:K){
+for (k in 1:K) {
   testIndexes <- which(folds==k,arr.ind=TRUE)
   testData <- real2[testIndexes, ]
   trainData <- real2[-testIndexes, ]
@@ -204,7 +204,6 @@ for (k in 1:K){
   y_hat_lcv <- mod_lcv(as.matrix(testData[-1]))$prediction
   KCV[k] <- mean((as.matrix(testData[1])-y_hat_lcv)^2)
 }
-
 mean(KCV) # mse
 
 
@@ -217,8 +216,7 @@ K = 10
 folds <- sample( rep(1:K,length=n) )
 KCV <- matrix(NA,K,100)
 
-
-for (k in 1:K){
+for (k in 1:K) {
   testIndexes <- which(folds==k,arr.ind=TRUE)
   testData <- real2[testIndexes, ]
   trainData <- real2[-testIndexes, ]
@@ -240,27 +238,24 @@ for (k in 1:K){
     KCV[k,i] <- mean((y_test-yhat_k)^2)
   }
   
-  
 }
+
 
 KCVmean<-apply(KCV,2,mean)
 KCVsd<-apply(KCV,2,sd)
-
 KCVmean <-na.omit(KCVmean)
 KCVsd <- na.omit(KCVsd)
 
 i1 <- which.min(KCVmean) # modello minCV
-
 i2 <- min(which(KCVmean<=KCVmean[i1]+KCVsd[i1]/sqrt(K))) # modello min one standard error rule
 
 plot(0:55,KCVmean, type="b",xlab="p", ylab="CV Error", pch=19,cex=.7)
 lines(0:55,KCVmean+KCVsd/sqrt(K),lty=2,col="darkred")
 lines(0:55,KCVmean-KCVsd/sqrt(K),lty=2,col="darkred")
 
+###########
 
-#################
-
-
+##### Ridge
 
 
 ridge_mse <- c()
@@ -277,14 +272,13 @@ for (lambda in lambdas) {
   ridge_r2adj <- c(ridge_r2adj, R2Adj_r)
 }
 
-
 plot(lambdas,ridge_mse,type="l",ylim=c(4,4.8),xlim=c(0,2000),
      xlab="Lambda",ylab="MSE",col="black")
 abline(h=mse.lars,lty=2)
 legend("topleft", lty=c(1),
        legend=c("Ridge Regression"))
 
-
+#con ggplot
 ggplot() + geom_line( aes(x = lambdas, y = ridge_mse), color='red', lwd=1.2) + theme_minimal() +
 xlab("Lambda") + ylab("MSE") + xlim(0,10000) + ylim(1.9,3)
 
