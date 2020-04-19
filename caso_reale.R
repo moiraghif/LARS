@@ -1,11 +1,14 @@
 rm(list = ls())
 
-
-library(tidyverse)
-
 real2 <- read_csv("dati.csv")
-#rownames(real2) <- real2[,1]
+
+real2 <- real2[real2$delta=='0',] # tengo solo i non censurati
 real2 <- real2[,-1]
+real2 <- real2[,-2]
+
+sum(is.na(real2)) #  non ci sono missing
+
+
 
 
 ridge <- function(x, y, lambda) {
@@ -155,7 +158,7 @@ train <- function(x_train, y_train, method, ...) {
   }
 }
 
-size_tr <- floor(0.75 * nrow(real2)) #  caso p > n
+size_tr <- floor(0.67 * nrow(real2)) #  caso p > n
 set.seed(123)
 
 train_ind <- sample(seq_len(nrow(real2)), size = size_tr)
@@ -276,6 +279,10 @@ plot(lambdas,ridge_mse,type="l",ylim=c(4,4.8),xlim=c(0,2000),
 abline(h=mse.lars,lty=2)
 legend("topleft", lty=c(1),
        legend=c("Ridge Regression"))
+
+
+ggplot() + geom_line( aes(x = lambdas, y = ridge_mse), color='red', lwd=1.2) + theme_minimal() +
+xlab("Lambda") + ylab("MSE") + xlim(0,10000) + ylim(1.9,3)
 
 
 #######
