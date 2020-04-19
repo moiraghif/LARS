@@ -207,6 +207,55 @@ mean(KCV) # mse
 
 
 
+### Cross validation + feature selection LARS
+
+n <- nrow(real2)
+K = 10
+folds <- sample( rep(1:K,length=n) )
+KCV <- matrix(NA,K,100)
+
+
+for (k in 1:K){
+  testIndexes <- which(folds==k,arr.ind=TRUE)
+  testData <- real2[testIndexes, ]
+  trainData <- real2[-testIndexes, ]
+  x_train <- as.matrix(trainData[,-1])
+  y_train <- as.matrix(trainData[,1])
+  x_test <- as.matrix(testData[,-1])
+  y_test <- as.matrix(testData[,1])
+  x_standardizer <- standardizer(x_train)
+  y_standardizer <- standardizer(y_train)
+  mod_lcv <- lars(x_standardizer(x_train), y_standardizer(y_train))
+  beta_compl <- mod_lcv$log
+  beta_sing <- mod_lcv$coef
+  x_test_stand <- x_standardizer(x_test)
+  I = ncol(beta_compl)
+  
+  for (i in 1:I) {
+    yhat_k <- x_test_stand %*% beta_compl[,i]
+    yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
+    KCV[k,i] <- mean((y_test-yhat_k)^2)
+  }
+  
+  
+}
+
+KCVmean<-apply(KCV,2,mean)
+KCVsd<-apply(KCV,2,sd)
+
+KCVmean <-na.omit(KCVmean)
+KCVsd <- na.omit(KCVsd)
+
+plot(0:55,KCVmean, type="b",xlab="p", ylab="CV Error", pch=19,cex=.7)
+lines(0:55,KCVmean+KCVsd/sqrt(K),lty=2,col="darkred")
+lines(0:55,KCVmean-KCVsd/sqrt(K),lty=2,col="darkred")
+
+
+#################
+
+
+
+
 ridge_mse <- c()
 ridge_r2adj <- c()
 lambdas <- seq(1,2000,50)
