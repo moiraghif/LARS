@@ -249,6 +249,10 @@ KCVsd<-apply(KCV,2,sd)
 KCVmean <-na.omit(KCVmean)
 KCVsd <- na.omit(KCVsd)
 
+i1 <- which.min(KCVmean) # modello minCV
+
+i2 <- min(which(KCVmean<=KCVmean[i1]+KCVsd[i1]/sqrt(K))) # modello min one standard error rule
+
 plot(0:55,KCVmean, type="b",xlab="p", ylab="CV Error", pch=19,cex=.7)
 lines(0:55,KCVmean+KCVsd/sqrt(K),lty=2,col="darkred")
 lines(0:55,KCVmean-KCVsd/sqrt(K),lty=2,col="darkred")
