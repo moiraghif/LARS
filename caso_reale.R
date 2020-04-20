@@ -1,5 +1,9 @@
 rm(list = ls())
 
+
+library(tidyverse)
+
+
 real2 <- read_csv("dati.csv")
 
 real2 <- real2[real2$delta=='0',] # tengo solo i non censurati
@@ -123,30 +127,43 @@ lars <- function(X, y, tol = 1e-10) {
 }
 
 
-train <- function(x_train, y_train, method, ...) {
+train <- function(x_train, y_train, method, force_independent = FALSE, ...) {
   ## execution example: mod <- train(x_train, y_train, lars)
   ## mod(x_test)$prediction >>> y_hat
-  
-  standardizer <- function(x) {
+
+  make_independent <- function(x) {
+    eg <- eigen(var(x))
+    M <- t(tcrossprod(eg$vectors, diag(eg$values, nrow = length(eg$values))))
+    M_inv <- solve(M, tol = 0)
+
+    function(x_new, reverse)
+      if (reverse) x_new %*% M
+      else x_new %*% M_inv
+  }
+
+  standardizer <- function(x, ind = FALSE) {
     mu <- colMeans(x)
     sigma <- as.double(sqrt(diag(var(x))))
+    mk_ind <- ifelse(ind, make_independent(x),
+                          function(x, reverse) x)
+
     function(y, reverse = FALSE) {
       if (reverse) {
         I <- diag(length(sigma)) * sigma
-        t(t(y %*% I) + mu)
+        mk_ind(t(t(y %*% I) + mu), reverse)
       } else {
         I <- diag(length(sigma)) / sigma
-        t(t(y) - mu) %*% I
+        mk_ind(t(t(y) - mu) %*% I, reverse)
       }
     }
   }
-  
-  x_standardizer <- standardizer(x_train)
-  y_standardizer <- standardizer(y_train)
-  
+
+  x_standardizer <- standardizer(x_train, force_independent)
+  y_standardizer <- standardizer(y_train, FALSE)
+
   beta <- as.matrix(method(x_standardizer(x_train),
-                           y_standardizer(y_train), ...)$coef)
-  
+                        y_standardizer(y_train), ...)$coef)
+
   predict <- function(x_new) {
     x_standardized <- x_standardizer(x_new)
     y_hat <- x_standardized %*% beta
@@ -169,6 +186,7 @@ x_train <- as.matrix(train_sample[,-1])
 y_train <- as.matrix(train_sample[,1])
 x_test <- as.matrix(test_sample[,-1])
 y_test <- as.matrix(test_sample[,1])
+
 
 # MSE
 mod_lars <- train(x_train, y_train, lars)
