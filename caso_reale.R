@@ -185,7 +185,8 @@ ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
                      
 real2 <- real2[real2$delta=='0',] # Si tengono solo i non censurati
 real2 <- real2[,-2]
-
+real2 <- dummy.data.frame(as.data.frame(real2), sep=".", names = "Type")
+                     
 sum(is.na(real2)) #  Non ci sono missing
                     
               
@@ -283,7 +284,7 @@ for (i in 1:I) {
 
 mse_lars2 # come varia l'errore ad ogni iterazione
                      
-
+set.seed(123)
 K <- 5
 folds <- sample( rep(1:K,length=n) )
 KCV <- matrix(NA,K,100)
