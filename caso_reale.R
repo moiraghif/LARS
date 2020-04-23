@@ -1,24 +1,24 @@
-rm(list = ls())
-
-
 library(tidyverse)
+library(dplyr)
+library(ggcorrplot)
+library(ggplot2)
+set.seed(123)
+
+# Per una maggior qualità dei grafici su Windows
+
+trace(grDevices:::png, quote({
+  if (missing(type) && missing(antialias)) {
+    type <- "cairo-png"
+    antialias <- "subpixel"
+  }
+}), print = FALSE)
 
 
-real2 <- read_csv("dati.csv")
-
-real2 <- real2[real2$delta=='0',] # tengo solo i non censurati
-real2 <- real2[,-1]
-real2 <- real2[,-2]
-
-sum(is.na(real2)) #  non ci sono missing
-
-
-
+# Funzioni prese da simulation.R
 
 ridge <- function(x, y, lambda) {
   p <- ncol(x)
   beta <- solve(crossprod(x) + lambda * diag(p), tol = 0) %*% crossprod(x, y)
-  ## same as: beta <- solve(t(X) %*% X + lambda*diag(p)) %*% t(X) %*% y
   y_hat <- x %*% beta
   list(coef = beta,
        prevision = y_hat)
@@ -26,19 +26,6 @@ ridge <- function(x, y, lambda) {
 
 
 lars <- function(X, y, tol = 1e-10) {
-
-    "DOCUMENTATION:
-  This function project the y vector into the space L between
-  the active variables (active); then it calculate the direction
-  of the update (u) and its length (gamma).
-  After max_iter iterations, the algorithm reaches convergence
-  and than beta can be computed (using OLS method) between the
-  active matrix Xa and the projection mu.
-  Direction of the update is equiangular between each active
-  variable at each step (and here come the name LAR).
-
-  See _Least Angle Regression_ (Efron, Hastie, Johnstone,
-  Tibshirami), January 2003, for details."
 
     least_squares <- function(x, y)
         solve(crossprod(x)) %*% crossprod(x, y)
@@ -50,57 +37,34 @@ lars <- function(X, y, tol = 1e-10) {
     beta_tot <- matrix(0, ncol = max_iter, nrow = p)
     rownames(beta_tot) <- colnames(X)
 
-                                        # page 6
-    ## mu is the projection of y on L
-    mu <- matrix(rep(0, n))             # n ÃÂ 1
+    mu <- matrix(rep(0, n))            
 
     for (i in 1:max_iter) {
-                                        # equation 2.1
-        ## each c_j represent the correlation of the j-th variable
-        ## between X and the projection on the sub-space L
-        c_hat <- crossprod(X, y - mu)   # vector, p ÃÂ 1
+                                        
+        c_hat <- crossprod(X, y - mu)   
 
-                                        # equation 2.9
-        ## the "active" subset includes each variable that is as much
-        ## correlate with y as the maximum-correlated x_j
-        C <- as.double(max(abs(c_hat)))  # scalar
-        active <- abs((abs(c_hat) - C)) <= tol  # due to R approximation
-        alpha <- sum(active)            # scalar, value of a
+                                        
+        C <- as.double(max(abs(c_hat)))  
+        active <- abs((abs(c_hat) - C)) <= tol  
+        alpha <- sum(active)            
 
-                                        # equation 2.10
-        ## a vector of signs of correlation, for multiply the X matrix
-        ## to use only positive correlations
-        s <- as.vector(sign(c_hat))     # vector, p ÃÂ 1
-
-                                        # equation 2.4
-        ## the X matrix that includes only active variables (with
-        ## positive correlation)
-        Xa <- (X %*% diag(s))[, active]  # matrix, n ÃÂ a
-
-                                        # equation 2.5
-                                        # (inverse is computed for performance)
-        ## this part is quite complicated, see Paper for details
-        Ga <- solve(crossprod(Xa))      # matrix, a ÃÂ a
-        ones <- matrix(rep(1, alpha))   # vector, a ÃÂ 1
+                                        
+        s <- as.vector(sign(c_hat))     
+      
+        Xa <- (X %*% diag(s))[, active]  
+      
+        Ga <- solve(crossprod(Xa))      
+        ones <- matrix(rep(1, alpha))  
         A <- as.double(crossprod(ones, Ga) %*% ones) ^-0.5
-                                        # scalar
-
-                                        # equation 2.6
-        ## u is the direction of the update
-        w <- A * Ga %*% ones            # vector a ÃÂ 1
-        u <- Xa %*% w                   # vector n ÃÂ 1
-
-                                        # equation 2.11
-        ## this part is not well described in the Paper
-        a <- crossprod(X, u)            # vector p ÃÂ 1
-
-                                        # equation 2.13
-        ## gamma is the intensity of the update: "We take the largest
-        ## step possible in the direction of this predictor" (page 5)
-        gamma <- Inf                    # scalar
-        ## 2p passages: the for loop is not critical
-        ## TODO? implement in R-Cpp
-        for (j in 1:p) {  # functional "min+"
+                                       
+        w <- A * Ga %*% ones            
+        u <- Xa %*% w                  
+      
+        a <- crossprod(X, u)            
+      
+        gamma <- Inf                    
+      
+        for (j in 1:p) { 
             cj <- c_hat[j, 1]
             aj <- a[j, 1]
             Ac <- c((C - cj) / (A - aj),
@@ -111,16 +75,12 @@ lars <- function(X, y, tol = 1e-10) {
             }
         }
 
-                                        # equation 2.12
-        ## mu is now updated; the updated value is than used to
-        ## compute the OLS solution and compute new beta vector
+                                        
         mu <- mu + gamma * u
         beta_tot[active, i] <- least_squares(Xa, mu)
     }
 
-    ## at the end of the iterative process, beta is returned as
-    ## parameters of the model; the projection is used as prevision of
-    ## the training data
+    
     list(coef = beta_tot[, max_iter, drop = FALSE],
          prevision = mu,
          log = beta_tot)
@@ -174,10 +134,61 @@ train <- function(x_train, y_train, method, force_independent = FALSE, ...) {
          coef = beta)
   }
 }
+                     
+make_independent <- function(x) {
+    eg <- eigen(var(x))
+    M <- t(tcrossprod(eg$vectors, diag(eg$values, nrow = length(eg$values))))
+    M_inv <- solve(M, tol = 0)
 
-size_tr <- floor(0.67 * nrow(real2)) #  caso p > n
-set.seed(123)
+    function(x_new, reverse)
+      if (reverse) x_new %*% M
+      else x_new %*% M_inv
+  }
+                     
+standardizer <- function(x, ind = FALSE) {
+    mu <- colMeans(x)
+    sigma <- as.double(sqrt(diag(var(x))))
+    mk_ind <- ifelse(ind, make_independent(x),
+                          function(x, reverse) x)
 
+    function(y, reverse = FALSE) {
+      if (reverse) {
+        I <- diag(length(sigma)) * sigma
+        mk_ind(t(t(y %*% I) + mu), reverse)
+      } else {
+        I <- diag(length(sigma)) / sigma
+        mk_ind(t(t(y) - mu) %*% I, reverse)
+      }
+    }
+  }
+                     
+###################################################################
+                     
+
+# Importazione dataset
+real2 <- read_csv("dati.csv") 
+real2 <- real2[real2$delta=='0',] # Si tengono solo i non censurati
+real2 <- real2[,-1]
+real2 <- real2[,-2]
+
+sum(is.na(real2)) #  Non ci sono missing
+                    
+
+# Corrplot
+corr <- cor(real2)
+corr[lower.tri(corr,diag=TRUE)] <- NA 
+corr[corr == 1] <- NA 
+corr <- as.data.frame(as.table(corr))
+corr <- na.omit(corr) 
+corr2 <- corr[corr$Var1=='y' ,] 
+corr2 <- subset(corr2, abs(Freq) > 0.3) 
+corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è alta per limitare i risultati visibil nel grafico
+corrp <- rbind(corr2, corr3)
+mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
+ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)                     
+
+# Suddivisione Train-Test
+size_tr <- floor(0.67 * nrow(real2)) 
 train_ind <- sample(seq_len(nrow(real2)), size = size_tr)
 train_sample <- real2[train_ind, ]
 test_sample <- real2[-train_ind, ]
@@ -186,13 +197,145 @@ x_train <- as.matrix(train_sample[,-1])
 y_train <- as.matrix(train_sample[,1])
 x_test <- as.matrix(test_sample[,-1])
 y_test <- as.matrix(test_sample[,1])
+                     
+                     
+# RIDGE  
+n_test <- nrow(y_test)
+p <- ncol(x_test)
+num <- n_test - 1
+den <- n_test - p - 1
+TSS <- sum((y_test-mean(y_test))^2)
+ridge_mse <- c()
+ridge_r2adj <- c()
+lambdas <- seq(0,15000,100)
+
+for (lambda in lambdas) {
+  mod_r <- train(x_train, y_train, ridge, lambda=lambda)
+  y_hat_r <- mod_r(x_test)$prediction
+  mse_r <- mean((y_test-y_hat_r)^2)
+  ridge_mse <- c(ridge_mse, mse_r)
+  RSS_r <- sum((y_test - y_hat_r)^2)
+  R2Adj_r <- 1-((num/den)*(RSS_r/TSS)) 
+  ridge_r2adj <- c(ridge_r2adj, R2Adj_r)
+}
+
+min(ridge_mse)
+                     
+ggplot() + geom_line( aes(x = lambdas, y = ridge_mse), color='red', lwd=1.2)  +  
+theme_minimal() +
+theme(axis.line = element_line(colour = "black", size = 1)) +
+xlab("Lambda") + ylab("MSE") + xlim(0,15000) + ylim(1.9,3) + geom_vline(xintercept = 7800)
 
 
-# MSE
+# Lambda ottimo tramite cross validation
+library(glmnet)
+fit.ridge = glmnet(as.matrix(select(real2, -y)),as.matrix(select(real2, y)),family="gaussian",alpha=0)
+plot(fit.ridge, xvar = "lambda")
+
+K <- 10
+ridge.cv<-cv.glmnet(as.matrix(select(real2, -y)),as.matrix(select(real2, y)),alpha=0, nfolds = K, grouped=FALSE)
+plot(ridge.cv) # la seconda barra corrisponde al minimo errore di cross validation + una volta il suo standard error
+hatlambda <-ridge.cv$lambda.1se
+hatlambda                     
+                     
+n <- nrow(real2)
+folds <- sample( rep(1:K,length=n) )
+KCV_r <- vector()
+
+for (k in 1:K) {
+  testIndexes <- which(folds==k,arr.ind=TRUE)
+  testData <- real2[testIndexes, ]
+  trainData <- real2[-testIndexes, ]
+  mod_rcv <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), ridge, lambda = hatlambda)
+  y_hat_rcv <- mod_rcv(as.matrix(testData[-1]))$prediction
+  KCV_r[k] <- mean((as.matrix(testData[1])-y_hat_rcv)^2)
+}
+mean(KCV_r) 
+                     
+                     
+                     
+                     
+# LARS
+ 
+# Train-Test                     
 mod_lars <- train(x_train, y_train, lars)
 y_hat_l <- mod_lars(x_test)$prediction
-mse.lars <- mean((y_test-y_hat_l)^2)
-mse.lars
+mse_lars <- mean((y_test-y_hat_l)^2)
+mse_lars
+                     
+
+x_standardizer <- standardizer(x_train)
+y_standardizer <- standardizer(y_train)
+mod_lars2 <- lars(x_standardizer(x_train), y_standardizer(y_train))
+mse_lars2 = c()
+beta_compl <- mod_lars2$log
+beta_sing <- mod_lars2$coef
+x_test_stand <- x_standardizer(x_test)
+I = ncol(beta_compl)
+
+for (i in 1:I) {
+  yhat_l2 <- x_test_stand %*% beta_compl[,i]
+  yhat_l2 <- y_standardizer(yhat_l2, reverse = TRUE)
+  mse_lars2[i] <- mean((y_test-yhat_l2)^2)
+}
+
+mse_lars2 # come varia l'errore ad ogni iterazione
+                     
+
+n <- nrow(real2)
+K = 5
+folds <- sample( rep(1:K,length=n) )
+KCV <- matrix(NA,K,100)
+
+for (k in 1:K) {
+  testIndexes <- which(folds==k,arr.ind=TRUE)
+  testData <- real2[testIndexes, ]
+  trainData <- real2[-testIndexes, ]
+  x_train <- as.matrix(trainData[,-1])
+  y_train <- as.matrix(trainData[,1])
+  x_test <- as.matrix(testData[,-1])
+  y_test <- as.matrix(testData[,1])
+  x_standardizer <- standardizer(x_train)
+  y_standardizer <- standardizer(y_train)
+  mod_lcv <- lars(x_standardizer(x_train), y_standardizer(y_train))
+  beta_compl <- mod_lcv$log
+  beta_sing <- mod_lcv$coef
+  x_test_stand <- x_standardizer(x_test)
+  I = ncol(beta_compl)
+  
+  for (i in 1:I) {
+    yhat_k <- x_test_stand %*% beta_compl[,i]
+    yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
+    KCV[k,i] <- mean((y_test-yhat_k)^2)
+  }
+  
+}
+
+
+KCVmean<-apply(KCV,2,mean)
+KCVsd<-apply(KCV,2,sd)
+KCVmean <-na.omit(KCVmean)
+KCVsd <- na.omit(KCVsd)
+
+i1 <- which.min(KCVmean) # modello minCV
+i2 <- min(which(KCVmean<=KCVmean[i1]+KCVsd[i1]/sqrt(K))) # modello min one standard error rule
+
+
+
+ggplot() + geom_point( aes(x = 1:50, y = KCVmean), color='red', lwd=2.3) +
+  geom_line( aes(x = 1:50, y = KCVmean), color='red', lwd=0.2) +
+  geom_line( aes(x = 1:50, y = KCVmean+KCVsd/sqrt(K)), color='black', lwd=1, linetype = "dashed") +
+  geom_line( aes(x = 1:50, y = KCVmean-KCVsd/sqrt(K)), color='black', lwd=1, linetype = "dashed") +
+  theme_minimal()   +
+  xlab("Iteration") + ylab("MSE") +
+  theme(axis.line = element_line(colour = "black", size = 1)) +
+  geom_vline(xintercept = i2)         
+                     
+                     
+                     
+                     
+                     
+                     
 
 #R2ADJ
 n_test <- nrow(y_test)
