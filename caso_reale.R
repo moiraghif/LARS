@@ -4,7 +4,7 @@ library(ggcorrplot)
 library(ggplot2)
 set.seed(123)
 
-# Per una maggior qualità dei grafici su Windows
+# Per una maggior qualitÃ  dei grafici su Windows
 
 trace(grDevices:::png, quote({
   if (missing(type) && missing(antialias)) {
@@ -177,7 +177,7 @@ corr <- as.data.frame(as.table(corr))
 corr <- na.omit(corr) 
 corr2 <- corr[corr$Var1=='y' ,] 
 corr2 <- subset(corr2, abs(Freq) > 0.3) 
-corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è alta per limitare i risultati visibil nel grafico
+corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia Ã¨ alta per limitare i risultati visibil nel grafico
 corrp <- rbind(corr2, corr3)
 mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
 ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
@@ -227,7 +227,7 @@ min(ridge_mse)
 ggplot() + geom_line( aes(x = lambdas, y = ridge_mse), color='red', lwd=1.2)  +  
 theme_minimal() +
 theme(axis.line = element_line(colour = "black", size = 1)) +
-xlab("Lambda") + ylab("MSE") + xlim(0,15000) + ylim(1.9,2) + geom_vline(xintercept = 7800)
+xlab("Lambda") + ylab("MSE") + xlim(3000,15000) + ylim(1.9,2) + geom_vline(xintercept = 7800)
 
 
 # Lambda ottimo tramite cross validation
@@ -271,13 +271,12 @@ x_standardizer <- standardizer(x_train)
 y_standardizer <- standardizer(y_train)
 mod_lars2 <- lars(x_standardizer(x_train), y_standardizer(y_train))
 mse_lars2 <- c()
-beta_compl <- mod_lars2$log
-beta_sing <- mod_lars2$coef
+betas <- mod_lars2$log
 x_test_stand <- x_standardizer(x_test)
-I <- ncol(beta_compl)
+I <- ncol(betas)
 
 for (i in 1:I) {
-  yhat_l2 <- x_test_stand %*% beta_compl[,i]
+  yhat_l2 <- x_test_stand %*% betas[,i]
   yhat_l2 <- y_standardizer(yhat_l2, reverse = TRUE)
   mse_lars2[i] <- mean((y_test-yhat_l2)^2)
 }
@@ -300,13 +299,12 @@ for (k in 1:K) {
   x_standardizer <- standardizer(x_train)
   y_standardizer <- standardizer(y_train)
   mod_lcv <- lars(x_standardizer(x_train), y_standardizer(y_train))
-  beta_compl <- mod_lcv$log
-  beta_sing <- mod_lcv$coef
+  betas_cv <- mod_lcv$log
   x_test_stand <- x_standardizer(x_test)
-  I = ncol(beta_compl)
+  I = ncol(betas_cv)
   
   for (i in 1:I) {
-    yhat_k <- x_test_stand %*% beta_compl[,i]
+    yhat_k <- x_test_stand %*% betas_cv[,i]
     yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
     KCV[k,i] <- mean((y_test-yhat_k)^2)
   }
@@ -336,15 +334,19 @@ ggplot() + geom_point( aes(x = 1:50, y = KCVmean), color='red', lwd=2.3) +
                      
                      
 # Coefficient path
-beta_sin <- order(abs(beta_sing), decreasing = TRUE)
-beta_sin <- beta_sin[1:10]
-beta_compl <- beta_compl[beta_sin,]
-
-beta_compl[beta_compl == 0] <- NA
 
 
-selected_variables <- rowSums(is.na(beta_compl)) < ncol(beta_compl) # se il numero di na è maggiore del numero di colonne
-beta_compl <- beta_compl[selected_variables, ]
+betas <- mod_lars2$log
+beta_fin <- mod_lars2$coef
+beta_fin <- order(abs(beta_fin), decreasing = TRUE)
+beta_fin <- beta_fin[1:10]
+betas <- betas[beta_fin,]
+
+betas[betas == 0] <- NA
+
+
+selected_variables <- rowSums(is.na(betas)) < ncol(betas) # se il numero di na Ã¨ maggiore del numero di colonne
+betas <- betas[selected_variables, ]
 #rownames(betas) <- colnames(x_train)[selected_variables]
 
 
@@ -354,11 +356,11 @@ data_plot <- tibble(
     value = numeric(),
     iteration = numeric())
 
-p <- ncol(beta_compl)
-for (i in seq_len(nrow(beta_compl))) {
+p <- ncol(betas)
+for (i in seq_len(nrow(betas))) {
     data_plot <- data_plot %>%
         add_row(variable = i,
-                value = beta_compl[i, ],
+                value = betas[i, ],
                 iteration = 1:p)
 }
 
@@ -370,5 +372,6 @@ data_plot$variable <- as.character(data_plot$variable)
     theme_minimal() + theme(legend.position = "none") +
     xlab("Iteration") + ylab("Coefficient") +
     ggtitle("LARS coefficient"))                     
+                     
                      
                      
