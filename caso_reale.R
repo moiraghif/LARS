@@ -167,12 +167,7 @@ standardizer <- function(x, ind = FALSE) {
 
 # Importazione dataset
 real2 <- read_csv("dati.csv") 
-real2 <- real2[real2$delta=='0',] # Si tengono solo i non censurati
-real2 <- real2[,-1]
-real2 <- real2[,-2]
-
-sum(is.na(real2)) #  Non ci sono missing
-                    
+                     
 
 # Corrplot
 corr <- cor(real2)
@@ -185,7 +180,16 @@ corr2 <- subset(corr2, abs(Freq) > 0.3)
 corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è alta per limitare i risultati visibil nel grafico
 corrp <- rbind(corr2, corr3)
 mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
-ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)                     
+ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
+                     
+                     
+real2 <- real2[real2$delta=='0',] # Si tengono solo i non censurati
+real2 <- real2[,-1]
+real2 <- real2[,-2]
+
+sum(is.na(real2)) #  Non ci sono missing
+                    
+              
 
 # Suddivisione Train-Test
 size_tr <- floor(0.67 * nrow(real2)) 
