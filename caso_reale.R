@@ -332,15 +332,7 @@ ggplot() + geom_point( aes(x = 1:50, y = KCVmean), color='red', lwd=2.3) +
                      
                      
                      
-
-mod_lars2 <- lars(x_standardizer(x_train), y_standardizer(y_train))
-
-beta_compl <- mod_lars2$log
-beta_sing <- mod_lars2$coef
-x_test_stand <- x_standardizer(x_test)
-x_standardizer <- standardizer(x_train)
-y_standardizer <- standardizer(y_train)
-
+# Coefficient path
 beta_sin <- order(abs(beta_sing), decreasing = TRUE)
 beta_sin <- beta_sin[1:10]
 beta_compl <- beta_compl[beta_sin,]
