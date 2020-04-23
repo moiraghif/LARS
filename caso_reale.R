@@ -227,7 +227,7 @@ min(ridge_mse)
 ggplot() + geom_line( aes(x = lambdas, y = ridge_mse), color='red', lwd=1.2)  +  
 theme_minimal() +
 theme(axis.line = element_line(colour = "black", size = 1)) +
-xlab("Lambda") + ylab("MSE") + xlim(0,15000) + ylim(1.9,3) + geom_vline(xintercept = 7800)
+xlab("Lambda") + ylab("MSE") + xlim(0,15000) + ylim(1.9,2) + geom_vline(xintercept = 7800)
 
 
 # Lambda ottimo tramite cross validation
