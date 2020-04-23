@@ -167,7 +167,7 @@ standardizer <- function(x, ind = FALSE) {
 
 # Importazione dataset
 real2 <- read_csv("dati.csv") 
-                     
+real2 <- real2[,-1]                     
 
 # Corrplot
 corr <- cor(real2)
@@ -184,7 +184,6 @@ ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
                      
                      
 real2 <- real2[real2$delta=='0',] # Si tengono solo i non censurati
-real2 <- real2[,-1]
 real2 <- real2[,-2]
 
 sum(is.na(real2)) #  Non ci sono missing
