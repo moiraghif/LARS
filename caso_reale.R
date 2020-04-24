@@ -4,7 +4,7 @@ library(ggcorrplot)
 library(ggplot2)
 set.seed(123)
 
-# Per una maggior qualitÃ  dei grafici su Windows
+# Per una maggior qualità  dei grafici su Windows
 
 trace(grDevices:::png, quote({
   if (missing(type) && missing(antialias)) {
@@ -162,9 +162,8 @@ standardizer <- function(x, ind = FALSE) {
     }
   }
                      
-R2Adj <- function(x_test, y_test, y_hat) {
+R2Adj <- function(x_test, y_test, y_hat, p) {
   n <- nrow(y_test)
-  p <- ncol(x_test)
   num <- n_test - 1
   den <- n_test - p - 1
   TSS <- sum((y_test-mean(y_test))^2)
@@ -188,7 +187,7 @@ corr <- as.data.frame(as.table(corr))
 corr <- na.omit(corr) 
 corr2 <- corr[corr$Var1=='y' ,] 
 corr2 <- subset(corr2, abs(Freq) > 0.3) 
-corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia Ã¨ alta per limitare i risultati visibil nel grafico
+corr3 <- subset(corr, abs(Freq) > 0.98) # la soglia è alta per limitare i risultati visibil nel grafico
 corrp <- rbind(corr2, corr3)
 mtx_corrp <- t(reshape2::acast(corrp, Var1~Var2, value.var="Freq"))
 ggcorrplot(mtx_corrp, lab = TRUE, ggtheme = ggplot2::theme_gray)
@@ -256,7 +255,7 @@ for (k in 1:K) {
   mod_rcv <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), ridge, lambda = hatlambda)
   y_hat_rcv <- mod_rcv(as.matrix(testData[-1]))$prediction
   KCV_r[k] <- mean((as.matrix(testData[1])-y_hat_rcv)^2)
-  R2Adj_r[k] <- R2Adj(as.matrix(testData[-1]), as.matrix(testData[1]), y_hat_rcv)
+  R2Adj_r[k] <- R2Adj(as.matrix(testData[-1]), as.matrix(testData[1]), y_hat_rcv, ncol(as.matrix(testData[-1])))
 }
 
 MSE_ridge <- mean(KCV_r) 
@@ -310,6 +309,7 @@ for (k in 1:K) {
   y_standardizer <- standardizer(y_train)
   mod_lcv <- lars(x_standardizer(x_train), y_standardizer(y_train))
   betas_cv <- mod_lcv$log
+  selected <- sum(abs(mod_lcv$coef) > 0)
   x_test_stand <- x_standardizer(x_test)
   I = ncol(betas_cv)
   
@@ -318,8 +318,9 @@ for (k in 1:K) {
     yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
     KCV[k,i] <- mean((y_test-yhat_k)^2)
     if (i == I) {
-      R2Adj_l[k] <- R2Adj(x_test, y_test, yhat_k)
+      R2Adj_l[k] <- R2Adj(x_test, y_test, yhat_k, selected)
       MSE_l[k] <- mean((y_test-yhat_k)^2)
+     }
    }
 }
 
@@ -359,9 +360,8 @@ betas <- betas[beta_fin,]
 betas[betas == 0] <- NA
 
 
-selected_variables <- rowSums(is.na(betas)) < ncol(betas) # se il numero di na Ã¨ maggiore del numero di colonne
+selected_variables <- rowSums(is.na(betas)) < ncol(betas) # se il numero di na è¨ maggiore del numero di colonne
 betas <- betas[selected_variables, ]
-#rownames(betas) <- colnames(x_train)[selected_variables]
 
 
 ## rigira i dati in un formato facilmente interpretabile da ggplot
@@ -389,3 +389,44 @@ data_plot$variable <- as.character(data_plot$variable)
                      
                      
                      
+
+# LARS indipendenza forzata
+  
+  
+  
+  
+K <- 5
+folds <- sample( rep(1:K,length=n) )
+KCV <- matrix(NA,K,60)
+R2Adj_l <- c()
+MSE_l <- c()                     
+
+for (k in 1:K) {
+  testIndexes <- which(folds==k,arr.ind=TRUE)
+  testData <- real2[testIndexes, ]
+  trainData <- real2[-testIndexes, ]
+  x_train <- as.matrix(trainData[,-1])
+  y_train <- as.matrix(trainData[,1])
+  x_test <- as.matrix(testData[,-1])
+  y_test <- as.matrix(testData[,1])
+  x_standardizer <- standardizer(x_train, ind = TRUE)
+  y_standardizer <- standardizer(y_train)
+  mod_lcv <- lars(x_standardizer(x_train), y_standardizer(y_train))
+  betas_cv <- mod_lcv$log
+  selected <- sum(abs(mod_lcv$coef) > 0)
+  x_test_stand <- x_standardizer(x_test)
+  I = ncol(betas_cv)
+  
+  for (i in 1:I) {
+    yhat_k <- x_test_stand %*% betas_cv[,i]
+    yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
+    KCV[k,i] <- mean((y_test-yhat_k)^2)
+    if (i == I) {
+      R2Adj_l[k] <- R2Adj(x_test, y_test, yhat_k, selected)
+      MSE_l[k] <- mean((y_test-yhat_k)^2)
+     }
+   }
+}
+
+R2_Lars_f <- mean(R2Adj_l)                     
+MSE_Lars_f <- mean(MSE_l)
