@@ -143,7 +143,7 @@ make_independent <- function(x) {
     function(x_new, reverse)
       if (reverse) x_new %*% M
       else x_new %*% M_inv
-  }
+}
                      
 standardizer <- function(x, ind = FALSE) {
     mu <- colMeans(x)
@@ -161,6 +161,17 @@ standardizer <- function(x, ind = FALSE) {
       }
     }
   }
+                     
+R2Adj <- function(x_test, y_test, y_hat) {
+  n <- nrow(y_test)
+  p <- ncol(x_test)
+  num <- n_test - 1
+  den <- n_test - p - 1
+  TSS <- sum((y_test-mean(y_test))^2)
+  RSS <- sum((y_test - y_hat)^2)
+  r2 <- 1-((num/den)*(RSS/TSS)) 
+}                     
+                     
                      
 ###################################################################
                      
@@ -204,13 +215,7 @@ y_test <- as.matrix(test_sample[,1])
                      
                      
 # RIDGE  
-n_test <- nrow(y_test)
-p <- ncol(x_test)
-num <- n_test - 1
-den <- n_test - p - 1
-TSS <- sum((y_test-mean(y_test))^2)
 ridge_mse <- c()
-ridge_r2adj <- c()
 lambdas <- seq(0,15000,100)
 
 for (lambda in lambdas) {
@@ -218,9 +223,6 @@ for (lambda in lambdas) {
   y_hat_r <- mod_r(x_test)$prediction
   mse_r <- mean((y_test-y_hat_r)^2)
   ridge_mse <- c(ridge_mse, mse_r)
-  RSS_r <- sum((y_test - y_hat_r)^2)
-  R2Adj_r <- 1-((num/den)*(RSS_r/TSS)) 
-  ridge_r2adj <- c(ridge_r2adj, R2Adj_r)
 }
 
 min(ridge_mse)
@@ -244,7 +246,8 @@ hatlambda
                      
 n <- nrow(real2)
 folds <- sample( rep(1:K,length=n) )
-KCV_r <- vector()
+KCV_r <- c()
+R2Adj_r <- c()
 
 for (k in 1:K) {
   testIndexes <- which(folds==k,arr.ind=TRUE)
@@ -253,8 +256,12 @@ for (k in 1:K) {
   mod_rcv <- train(as.matrix(trainData[-1]), as.matrix(trainData[1]), ridge, lambda = hatlambda)
   y_hat_rcv <- mod_rcv(as.matrix(testData[-1]))$prediction
   KCV_r[k] <- mean((as.matrix(testData[1])-y_hat_rcv)^2)
+  R2Adj_r[k] <- R2Adj(as.matrix(testData[-1]), as.matrix(testData[1]), y_hat_rcv)
 }
-mean(KCV_r) 
+
+MSE_ridge <- mean(KCV_r) 
+
+R2_ridge <- mean(R2Adj_r)                     
                      
                      
                      
@@ -264,8 +271,8 @@ mean(KCV_r)
 # Train-Test                     
 mod_lars <- train(x_train, y_train, lars)
 y_hat_l <- mod_lars(x_test)$prediction
-mse_lars <- mean((y_test-y_hat_l)^2)
-mse_lars
+mean((y_test-y_hat_l)^2)
+
                      
 
 x_standardizer <- standardizer(x_train)
@@ -287,7 +294,9 @@ mse_lars2 # come varia l'errore ad ogni iterazione
 set.seed(123)
 K <- 5
 folds <- sample( rep(1:K,length=n) )
-KCV <- matrix(NA,K,100)
+KCV <- matrix(NA,K,60)
+R2Adj_l <- c()
+MSE_l <- c()                     
 
 for (k in 1:K) {
   testIndexes <- which(folds==k,arr.ind=TRUE)
@@ -308,11 +317,15 @@ for (k in 1:K) {
     yhat_k <- x_test_stand %*% betas_cv[,i]
     yhat_k <- y_standardizer(yhat_k, reverse = TRUE)
     KCV[k,i] <- mean((y_test-yhat_k)^2)
-  }
-  
+    if (i == I) {
+      R2Adj_l[k] <- R2Adj(x_test, y_test, yhat_k)
+      MSE_l[k] <- mean((y_test-yhat_k)^2)
+   }
 }
 
-
+R2_Lars <- mean(R2Adj_l)                     
+MSE_Lars <- mean(MSE_l)
+  
 KCVmean<-apply(KCV,2,mean)
 KCVsd<-apply(KCV,2,sd)
 KCVmean <-na.omit(KCVmean)
