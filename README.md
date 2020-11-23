@@ -9,3 +9,6 @@ A simple LARS implementation from scratch in R
 - Algorithm description
 - Prediction Error decomposition through a simulation scenario
 - Application to a real case study with comparison with ridge regression
+
+
+[presentation](https://prezi.com/p/_2qaxpdgkdb1/?present=1)
